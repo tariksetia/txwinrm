@@ -11,9 +11,6 @@
 
 """
 Use twisted web client to enumerate/pull WQL query.
-
-
-
 """
 
 import sys
@@ -32,7 +29,7 @@ from . import contstants as c
 from . import response as r
 
 GLOBAL_ELEMENT_COUNT = 0
-CONNECT_TIMEOUT = 1
+CONNECT_TIMEOUT = 5
 
 
 def get_request_template(name):
@@ -211,7 +208,8 @@ def send_requests(client, config):
 
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("parser", choices=['cetree', 'etree', 'sax'])
+    parser.add_argument("--parser", "-p", default='sax',
+                        choices=['cetree', 'etree', 'sax'])
     parser.add_argument("--debug", "-d", action="store_true")
     return parser.parse_args()
 

@@ -1,8 +1,8 @@
 
 hosts = dict(
-    gilroy=('Administrator', '<password>'),
-    cupertino=('Administrator', '<password>'),
-    campbell=('Administrator', '<password>')
+    gilroy=('Administrator', 'Z3n0ss'),
+    cupertino=('Administrator', 'Z3n0ss'),
+    campbell=('Administrator', 'Z3n0ss')
 )
 
 wqls = [
