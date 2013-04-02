@@ -19,10 +19,12 @@ Use twisted web client to enumerate/pull WQL query.
 import sys
 import os
 import base64
+import httplib
 from argparse import ArgumentParser
 
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol
+from twisted.internet.error import TimeoutError
 from twisted.web.client import Agent, HTTPConnectionPool
 from twisted.web.http_headers import Headers
 
@@ -30,6 +32,7 @@ from . import contstants as c
 from . import response as r
 
 GLOBAL_ELEMENT_COUNT = 0
+CONNECT_TIMEOUT = 1
 
 
 def get_request_template(name):
@@ -109,9 +112,19 @@ class WinrmClient(object):
     def __init__(self, agent, handler):
         self._agent = agent
         self._handler = handler
+        self._unauthorized_hosts = []
+        self._timedout_hosts = []
 
     @defer.inlineCallbacks
     def enumerate(self, hostname, username, password, wql):
+        if hostname in self._unauthorized_hosts:
+            if c.DEBUG:
+                print hostname, "previously returned unauthorized. Skipping."
+            return
+        if hostname in self._timedout_hosts:
+            if c.DEBUG:
+                print hostname, "previously timed out. Skipping."
+            return
         url = "http://{hostname}:5985/wsman".format(hostname=hostname)
         authstr = "{username}:{password}".format(username=username,
                                                  password=password)
@@ -137,7 +150,14 @@ class WinrmClient(object):
                 body = StringProducer(request)
                 response = yield self._agent.request('POST', url, headers,
                                                      body)
-                print hostname, "HTTP status:", response.code
+                if c.DEBUG:
+                    print hostname, "HTTP status:", response.code
+                if response.code == httplib.UNAUTHORIZED:
+                    if hostname in self._unauthorized_hosts:
+                        return
+                    self._unauthorized_hosts.append(hostname)
+                    raise Exception("unauthorized, check username and "
+                                    "password.")
                 if response.code != 200:
                     reader = ErrorReader(hostname, wql)
                     response.deliverBody(reader)
@@ -152,9 +172,18 @@ class WinrmClient(object):
                     break
                 request_fmt_filename = get_request_template('pull')
                 enumeration_context = handler.enumeration_context
-        except Exception, e:
-            print e
+        except TimeoutError, e:
+            if hostname in self._timedout_hosts:
+                return
+            self._timedout_hosts.append(hostname)
+            print >>sys.stderr, "ERROR:", hostname, e
             raise
+        except Exception, e:
+            print >>sys.stderr, "ERROR:", hostname, e
+            raise
+
+
+exit_status = 0
 
 
 def send_requests(client, config):
@@ -163,9 +192,10 @@ def send_requests(client, config):
         for wql in config.wqls:
             d = client.enumerate(hostname, username, password, wql)
             ds.append(d)
-    dl = defer.DeferredList(ds)
+    dl = defer.DeferredList(ds, consumeErrors=True)
 
     def dl_callback(results):
+        global exit_status
         failure_count = 0
         for success, result in results:
             if not success:
@@ -173,7 +203,7 @@ def send_requests(client, config):
         reactor.stop()
         if failure_count:
             print >>sys.stderr, 'There were', failure_count, "failures"
-            sys.exit(1)
+            exit_status = 1
         print >>sys.stderr, "Processed", GLOBAL_ELEMENT_COUNT, "elements"
 
     dl.addCallback(dl_callback)
@@ -192,7 +222,7 @@ def main():
     pool = HTTPConnectionPool(reactor, persistent=True)
     pool.maxPersistentPerHost = c.MAX_PERSISTENT_PER_HOST
     pool.cachedConnectionTimeout = c.CACHED_CONNECTION_TIMEOUT
-    agent = Agent(reactor, pool=pool)
+    agent = Agent(reactor, connectTimeout=CONNECT_TIMEOUT, pool=pool)
     if args.parser == 'etree':
         handler = r.ElementTreeResponseHandler()
     elif args.parser == 'cetree':
@@ -205,6 +235,7 @@ def main():
     from . import config
     reactor.callWhenRunning(send_requests, client, config)
     reactor.run()
+    sys.exit(exit_status)
 
 
 if __name__ == '__main__':
