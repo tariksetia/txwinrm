@@ -17,5 +17,5 @@ setup(name='txwinrm',
       author='Zenoss',
       author_email='bedwards@zenoss.com',
       url='https://github.com/zenoss/txwinrm',
-      packages=['txwinrm'],
+      packages=['txwinrm', 'txwinrm.request'],
       )
