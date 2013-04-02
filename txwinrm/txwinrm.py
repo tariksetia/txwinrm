@@ -32,6 +32,14 @@ GLOBAL_ELEMENT_COUNT = 0
 CONNECT_TIMEOUT = 5
 
 
+def get_vmpeak():
+    with open('/proc/self/status') as status:
+        for line in status:
+            key, value = line.split(None, 1)
+            if key == 'VmPeak:':
+                return value
+
+
 def get_request_template(name):
     basedir = os.path.dirname(os.path.abspath(__file__))
     return os.path.join(basedir, 'request', name + '.xml')
@@ -233,6 +241,7 @@ def main():
     from . import config
     reactor.callWhenRunning(send_requests, client, config)
     reactor.run()
+    print >>sys.stderr, "Peak virtual memory useage:", get_vmpeak()
     sys.exit(exit_status)
 
 

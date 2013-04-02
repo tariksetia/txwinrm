@@ -62,18 +62,21 @@ Offers three XML parser implementations. Specify with the -p option.
 
     $ time python -m txwinrm.txwinrm -p sax >/dev/null
     Processed 9684 elements
-    real    0m1.011s
-    user    0m0.533s
-    sys     0m0.113s
-
-    $ time python -m txwinrm.txwinrm -p cetree >/dev/null
-    Processed 9725 elements
-    real    0m2.027s
-    user    0m0.401s
-    sys     0m0.140s
+    Peak virtual memory useage: 603796 kB
+    real    0m1.008s
+    user    0m0.534s
+    sys     0m0.112s
 
     $ time python -m txwinrm.txwinrm -p etree >/dev/null
     Processed 9684 elements
-    real    0m1.501s
-    user    0m1.192s
-    sys     0m0.095s
+    Peak virtual memory useage: 587832 kB
+    real    0m1.521s
+    user    0m1.182s
+    sys     0m0.121s
+
+    $ time python -m txwinrm.txwinrm -p cetree >/dev/null
+    Processed 9684 elements
+    Peak virtual memory useage: 448208 kB
+    real    0m1.024s
+    user    0m0.408s
+    sys     0m0.122s
