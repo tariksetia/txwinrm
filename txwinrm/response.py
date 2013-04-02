@@ -39,9 +39,9 @@ from . import contstants as c
 class EtreeEventHandler(object):
     """Used by ElementTree and cElementTree parsing"""
 
-    def __init__(self, root, printer, resource_uri, cim_class):
+    def __init__(self, root, accumulator, resource_uri, cim_class):
         self._root = root
-        self._printer = printer
+        self._accumulator = accumulator
         self._resource_uri = resource_uri
         self._cim_class = cim_class
 
@@ -53,21 +53,16 @@ class EtreeEventHandler(object):
             localname = elem.tag
         uri = uri[1:]
         if event == "start":
-            if uri.lower() == self._resource_uri.lower() \
-                    and localname.lower() == self._cim_class.lower():
-                self._printer.new_instance()
+            if (uri.lower() == self._resource_uri.lower()
+                and localname.lower() == self._cim_class.lower()) \
+                or (uri.lower() == c.XML_NS_WS_MAN.lower()
+                    and localname.lower() == c.WSM_XML_FRAGMENT.lower()):
+                self._accumulator.new_instance()
             return
         if event == "end":
             if elem.text:
-                self._printer.append_element(uri, localname, elem.text)
+                self._accumulator.append_element(uri, localname, elem.text)
             self._root.clear()
-
-    def print_elems_with_text(self):
-        self._printer.print_elems_with_text()
-
-    @property
-    def enumeration_context(self):
-        return self._printer.enumeration_context
 
 
 class AsyncParseReader(Protocol):
@@ -111,17 +106,16 @@ class StringIOReader(Protocol):
 class cElementTreeResponseHandler(object):
 
     @defer.inlineCallbacks
-    def handle_response(self, response, resource_uri, cim_class, printer):
+    def handle_response(self, response, resource_uri, cim_class, accumulator):
         reader = StringIOReader()
         response.deliverBody(reader)
         source = yield reader.deferred_string_io
         context = cElementTree.iterparse(source, events=("start", "end"))
         context = iter(context)
         event, root = context.next()
-        handler = EtreeEventHandler(root, printer, resource_uri, cim_class)
+        handler = EtreeEventHandler(root, accumulator, resource_uri, cim_class)
         for event, elem in context:
             handler.handle_event(event, elem)
-        defer.returnValue(handler)
 
 
 # ElementTree parsing ---------------------------------------------------------
@@ -166,26 +160,25 @@ class WsmanElementTreeParser(ElementTree.XMLParser):
 class ElementTreeResponseHandler(object):
 
     @defer.inlineCallbacks
-    def handle_response(self, response, resource_uri, cim_class, printer):
+    def handle_response(self, response, resource_uri, cim_class, accumulator):
         parser = WsmanElementTreeParser()
         reader = AsyncParseReader(parser)
         response.deliverBody(reader)
         start_event, root = yield parser.get_event()
-        handler = EtreeEventHandler(root, printer, resource_uri, cim_class)
+        handler = EtreeEventHandler(root, accumulator, resource_uri, cim_class)
         while True:
             event, elem = yield parser.get_event()
             if event is None:
                 break
             handler.handle_event(event, elem)
-        defer.returnValue(handler)
 
 
 # sax expat parsing -----------------------------------------------------------
 
 class WsmanSaxContentHandler(sax.handler.ContentHandler):
 
-    def __init__(self, printer, resource_uri, cim_class):
-        self._printer = printer
+    def __init__(self, accumulator, resource_uri, cim_class):
+        self._accumulator = accumulator
         self._resource_uri = resource_uri
         self._cim_class = cim_class
         self._buffer = StringIO()
@@ -194,9 +187,12 @@ class WsmanSaxContentHandler(sax.handler.ContentHandler):
         uri, localname = name
         if uri is None:
             uri = ''
-        if uri.lower() == self._resource_uri.lower() \
-                and localname.lower() == self._cim_class.lower():
-            self._printer.new_instance()
+        print 'DEBUG', uri.lower(), '.', localname.lower()
+        if (uri.lower() == self._resource_uri.lower()
+                and localname.lower() == self._cim_class.lower()) \
+                or (uri.lower() == c.XML_NS_WS_MAN.lower()
+                    and localname.lower() == c.WSM_XML_FRAGMENT.lower()):
+            self._accumulator.new_instance()
 
     def endElementNS(self, name, qname):
         text = self._buffer.getvalue()
@@ -206,26 +202,26 @@ class WsmanSaxContentHandler(sax.handler.ContentHandler):
             uri, localname = name
             if uri is None:
                 uri = ''
-            self._printer.append_element(uri, localname, text)
+            self._accumulator.append_element(uri, localname, text)
 
     def characters(self, content):
         self._buffer.write(content)
 
     def print_elems_with_text(self):
-        self._printer.print_elems_with_text()
+        self._accumulator.print_elems_with_text()
 
     @property
     def enumeration_context(self):
-        return self._printer.enumeration_context
+        return self._accumulator.enumeration_context
 
 
 class ExpatResponseHandler(object):
 
     @defer.inlineCallbacks
-    def handle_response(self, response, resource_uri, cim_class, printer):
+    def handle_response(self, response, resource_uri, cim_class, accumulator):
         parser = sax.make_parser()
         parser.setFeature(sax.handler.feature_namespaces, True)
-        handler = WsmanSaxContentHandler(printer, resource_uri, cim_class)
+        handler = WsmanSaxContentHandler(accumulator, resource_uri, cim_class)
         parser.setContentHandler(handler)
         d = defer.Deferred()
 
@@ -235,4 +231,3 @@ class ExpatResponseHandler(object):
         reader = AsyncParseReader(parser, finished)
         response.deliverBody(reader)
         yield d
-        defer.returnValue(handler)

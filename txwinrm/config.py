@@ -1,11 +1,12 @@
 
 hosts = dict(
     gilroy=('Administrator', 'Z3n0ss'),
-    cupertino=('Administrator', 'Z3n0ss'),
-    campbell=('Administrator', 'Z3n0ss')
+    # cupertino=('Administrator', 'Z3n0ss'),
+    # campbell=('Administrator', 'Z3n0ss')
 )
 
 wqls = [
+
     # ZenPacks.zenoss.WindowsMonitor modeler plugins
     # FileSystemMap
     'select * from Win32_logicaldisk',
@@ -38,28 +39,33 @@ wqls = [
     'currentclockspeed,extclock,currentvoltage,l2cachesize,version From '
     'Win32_Processor',
 
-    # SoftwareMap
-    # In Windows 2003 Server, Win32_Product is not enabled by default, and must
-    # be enabled as follows:
-    #   1. In Add or Remove Programs, click Add/Remove Windows Components.
-    #   2. In the Windows Components Wizard, select Management and Monitoring
-    #      Tools and then click Details.
-    #   3. In the Management and Monitoring Tools dialog box, select WMI
-    #      Windows Installer Provider and then click OK.
-    #   4. Click Next.
-    # 'Select name,installdate from Win32_Product',
+    # # SoftwareMap
+    # # In Windows 2003 Server, Win32_Product is not enabled by default, and
+    # # must be enabled as follows:
+    # #   1. In Add or Remove Programs, click Add/Remove Windows Components.
+    # #   2. In the Windows Components Wizard, select Management and Monitoring
+    # #      Tools and then click Details.
+    # #   3. In the Management and Monitoring Tools dialog box, select WMI
+    # #      Windows Installer Provider and then click OK.
+    # #   4. Click Next.
+    # # 'Select name,installdate from Win32_Product',
 
-    # # ProcessMap
+    # # # ProcessMap
     'Select * From Win32_Process',
 
 
-    # # zenwin
+    # zenwin
     'SELECT Name, State, StartMode FROM Win32_Service',
 
-    # # Performance Data
-    # # \Disk Read Bytes/sec
+
+    # Performance Data
+    # \Disk Read Bytes/sec
     'select name,DiskReadBytesPerSec from '
     'Win32_PerfRawData_PerfDisk_PhysicalDisk',
+
+    'select IDProcess, PercentProcessorTime, TimeStamp_Sys100NS '
+    'from Win32_PerfRawData_PerfProc_Process where name = "wmiprvse"',
+
 
     # ZenPacks.zenoss.MSMQMonitor modeler plugins
     # MSMQQueueMap
