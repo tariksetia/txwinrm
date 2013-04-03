@@ -19,5 +19,6 @@ XML_NS_MSWSMAN = 'http://schemas.microsoft.com/wbem/wsman/1/wsman.xsd'
 WSM_XML_FRAGMENT = 'XmlFragment'
 WSENUM_ENUMERATION_CONTEXT = 'EnumerationContext'
 WSENUM_END_OF_SEQUENCE = 'EndOfSequence'
+WSENUM_ITEMS = 'Items'
 
 WMICIMV2 = 'http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2'

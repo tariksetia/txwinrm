@@ -22,14 +22,14 @@ from argparse import ArgumentParser
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol
 from twisted.internet.error import TimeoutError
-from twisted.web.client import Agent, HTTPConnectionPool
+from twisted.web.client import Agent
 from twisted.web.http_headers import Headers
 
 from . import contstants as c
 from . import response as r
 
 GLOBAL_ELEMENT_COUNT = 0
-CONNECT_TIMEOUT = 5
+CONNECT_TIMEOUT = 1
 
 
 def get_vmpeak():
@@ -45,63 +45,44 @@ def get_request_template(name):
     return os.path.join(basedir, 'request', name + '.xml')
 
 
-class EnumerationContextTracker(object):
+class ElementPrinter(object):
 
-    def __init__(self):
-        self._enumeration_context = None
-        self._end_of_sequence = False
-
-    @property
-    def enumeration_context(self):
-        if not self._end_of_sequence:
-            return self._enumeration_context
-
-    def append_element(self, uri, localname, text):
-        if uri == c.XML_NS_ENUMERATION:
-            if localname == c.WSENUM_ENUMERATION_CONTEXT:
-                self._enumeration_context = text
-            elif localname == c.WSENUM_END_OF_SEQUENCE:
-                self._end_of_sequence = True
-
-
-class ElementPrinter(EnumerationContextTracker):
-
-    def __init__(self):
-        EnumerationContextTracker.__init__(self)
+    def __init__(self, hostname, wql):
+        self._hostname = hostname
+        self._wql = wql
         self._elems_with_text = []
-        self._longest_tag = 0
+        self._demarc = '-' * 4
 
     def new_instance(self):
-        demarc = '-' * self._longest_tag
-        self._elems_with_text.append((demarc, demarc))
+        if self._elems_with_text:
+            self._elems_with_text.append((self._demarc, ''))
 
     def append_element(self, uri, localname, text):
-        EnumerationContextTracker.append_element(self, uri, localname, text)
         global GLOBAL_ELEMENT_COUNT
-        GLOBAL_ELEMENT_COUNT += 1
-        tag = uri.split('/')[-1] + '.' + localname
-        self._elems_with_text.append((tag, text))
-        if len(tag) > self._longest_tag:
-            self._longest_tag = len(tag)
+        if text:
+            GLOBAL_ELEMENT_COUNT += 1
+        self._elems_with_text.append((localname, text))
 
-    def print_elements_with_text(self):
+    def print_elements_with_text(self, result):
+        print '\n', self._hostname, "==>", self._wql
         for tag, text in self._elems_with_text:
-            print '{0:>{width}} {1}'.format(tag, text, width=self._longest_tag)
+            if tag == self._demarc:
+                print ' ', self._demarc
+            else:
+                print '  {0} = {1}'.format(tag, text)
 
 
-class ProcessStatsAccumulator(EnumerationContextTracker):
+class ProcessStatsAccumulator(object):
 
     def __init__(self):
-        EnumerationContextTracker.__init__(self)
         self.process_stats = []
 
     def new_instance(self):
         self.process_stats.append({})
 
     def append_element(self, uri, localname, text):
-        EnumerationContextTracker.append_element(self, uri, localname, text)
-        print "DEBUG2", uri, localname, text
-        if not uri and localname in ['IDProcess', 'PercentProcessorTime',
+        if not uri and localname in ['Name', 'IDProcess',
+                                     'PercentProcessorTime',
                                      'Timestamp_Sys100NS']:
             self.process_stats[-1][localname] = text
 
@@ -131,11 +112,15 @@ class ErrorReader(Protocol):
     def connectionLost(self, reason):
         from xml.etree import ElementTree
         tree = ElementTree.fromstring(self._data)
-        print >>sys.stderr, self._hostname, "==>", self._wql
+        print >>sys.stderr, self._hostname, "-->", self._wql
         print >>sys.stderr, tree.findtext("Envelope/Body/Fault/Reason/Text")
         print >>sys.stderr, tree.findtext(
             "Envelope/Body/Fault/Detail/MSFT_WmiError/Message")
         self.d.callback(None)
+
+
+class Unauthorized(Exception):
+    pass
 
 
 class WinrmClient(object):
@@ -187,20 +172,18 @@ class WinrmClient(object):
                     if hostname in self._unauthorized_hosts:
                         return
                     self._unauthorized_hosts.append(hostname)
-                    raise Exception("unauthorized, check username and "
-                                    "password.")
+                    raise Unauthorized("unauthorized, check username and "
+                                       "password.")
                 if response.code != 200:
                     reader = ErrorReader(hostname, wql)
                     response.deliverBody(reader)
                     yield reader.d
                     raise Exception("HTTP status" + str(response.code))
-                yield self._handler.handle_response(response, resource_uri,
-                                                    cim_class, accumulator)
-                print '\n', hostname, "==>", wql
-                if not accumulator.enumeration_context:
+                enumeration_context = yield self._handler.handle_response(
+                    response, resource_uri, cim_class, accumulator)
+                if not enumeration_context:
                     break
                 request_fmt_filename = get_request_template('pull')
-                enumeration_context = accumulator.enumeration_context
         except TimeoutError, e:
             if hostname in self._timedout_hosts:
                 return
@@ -213,24 +196,21 @@ class WinrmClient(object):
 
 
 @defer.inlineCallbacks
-def get_remote_process_stats(client, hostname, username, password,
-                             process_name):
-    wql_fmt = 'select IDProcess, PercentProcessorTime, Timestamp_Sys100NS ' \
-              'from Win32_PerfRawData_PerfProc_Process where name = ' \
-              '"{process_name}"'
-    wql = wql_fmt.format(process_name=process_name)
+def get_remote_process_stats(client, hostname, username, password):
+    wql = 'select Name, IDProcess, PercentProcessorTime,' \
+          'Timestamp_Sys100NS from Win32_PerfRawData_PerfProc_Process ' \
+          'where name like "wmi%"'
     accumulator = ProcessStatsAccumulator()
     yield client.enumerate(hostname, username, password, wql, accumulator)
-    from pprint import pprint
-    print "Process stats!!!!"
-    pprint(accumulator.process_stats)
     defer.returnValue(accumulator.process_stats)
 
 
 def calculate_remote_cpu_util(initial_stats, final_stats):
     for hostname, initial_stats_dicts in initial_stats.iteritems():
         final_stats_dicts = final_stats[hostname]
+        print >>sys.stderr, "   ", hostname
         for initial_stats_dict in initial_stats_dicts:
+            name = initial_stats_dict["Name"]
             pid = initial_stats_dict["IDProcess"]
             for final_stats_dict in final_stats_dicts:
                 if pid == final_stats_dict["IDProcess"]:
@@ -243,51 +223,63 @@ def calculate_remote_cpu_util(initial_stats, final_stats):
             y1 = float(final_stats_dict['Timestamp_Sys100NS'])
             y0 = float(initial_stats_dict['Timestamp_Sys100NS'])
             cpu_pct = (x1 - x0) / (y1 - y0)
-            fmt = "{hostname} {cpu_pct:.2%} of CPU time used by wmiprvse "\
+            fmt = "      {cpu_pct:.2%} of CPU time used by {name} "\
                   "process with pid {pid}"
             print >>sys.stderr, fmt.format(hostname=hostname, cpu_pct=cpu_pct,
-                                           pid=pid)
+                                           name=name, pid=pid)
+
 
 exit_status = 0
 
 
 @defer.inlineCallbacks
 def send_requests(client, config):
-    printers = []
+    global exit_status
     initial_wmiprvse_stats = {}
-    ds = []
+    good_hosts = []
     for hostname, (username, password) in config.hosts.iteritems():
-        initial_wmiprvse_stats[hostname] = yield get_remote_process_stats(
-            client, hostname, username, password, "wmiprvse")
-        print "DEBUG3", initial_wmiprvse_stats
+        try:
+            initial_wmiprvse_stats[hostname] = yield get_remote_process_stats(
+                client, hostname, username, password)
+            good_hosts.append((hostname, username, password))
+        except Unauthorized:
+            continue
+        except TimeoutError:
+            continue
+    if not good_hosts:
+        exit_status = 1
+        reactor.stop()
+        return
+    ds = []
+    for hostname, username, password in good_hosts:
         for wql in config.wqls:
-            printer = ElementPrinter()
-            printers.append(printer)
+            printer = ElementPrinter(hostname, wql)
             d = client.enumerate(hostname, username, password, wql, printer)
+            d.addCallback(printer.print_elements_with_text)
             ds.append(d)
-    print len(ds), "in DeferredList"
     dl = defer.DeferredList(ds, consumeErrors=True)
 
     @defer.inlineCallbacks
     def dl_callback(results):
-        print "dl_callback"
         global exit_status
-        for printer in printers:
-            printer.print_elements_with_text()
         final_wmiprvse_stats = {}
         for hostname, (username, password) in config.hosts.iteritems():
             final_wmiprvse_stats[hostname] = yield get_remote_process_stats(
-                client, hostname, username, password, "wmiprvse")
-        calculate_remote_cpu_util(initial_wmiprvse_stats, final_wmiprvse_stats)
+                client, hostname, username, password)
+        print >>sys.stderr, '\nSummary:'
+        print >>sys.stderr, '  Connected to', len(good_hosts), 'of', \
+                            len(config.hosts), 'hosts'
+        print >>sys.stderr, "  Processed", GLOBAL_ELEMENT_COUNT, "elements"
         failure_count = 0
         for success, result in results:
             if not success:
                 failure_count += 1
         if failure_count:
-            print >>sys.stderr, 'There were', failure_count, "failures"
             exit_status = 1
-        else:
-            print >>sys.stderr, "Processed", GLOBAL_ELEMENT_COUNT, "elements"
+        print >>sys.stderr, '  Failed to process', failure_count, "responses"
+        print >>sys.stderr, "  Peak virtual memory useage:", get_vmpeak()
+        print >>sys.stderr, '  Remote CPU utilization:'
+        calculate_remote_cpu_util(initial_wmiprvse_stats, final_wmiprvse_stats)
         reactor.stop()
 
     dl.addCallback(dl_callback)
@@ -304,10 +296,15 @@ def parse_args():
 def main():
     args = parse_args()
     c.DEBUG = args.debug
-    pool = HTTPConnectionPool(reactor, persistent=True)
-    pool.maxPersistentPerHost = c.MAX_PERSISTENT_PER_HOST
-    pool.cachedConnectionTimeout = c.CACHED_CONNECTION_TIMEOUT
-    agent = Agent(reactor, connectTimeout=CONNECT_TIMEOUT, pool=pool)
+    try:
+        # HTTPConnectionPool has been present since Twisted version 12.1
+        from twisted.web.client import HTTPConnectionPool
+        pool = HTTPConnectionPool(reactor, persistent=True)
+        pool.maxPersistentPerHost = c.MAX_PERSISTENT_PER_HOST
+        pool.cachedConnectionTimeout = c.CACHED_CONNECTION_TIMEOUT
+        agent = Agent(reactor, connectTimeout=CONNECT_TIMEOUT, pool=pool)
+    except ImportError:
+        agent = Agent(reactor, connectTimeout=CONNECT_TIMEOUT)
     if args.parser == 'etree':
         handler = r.ElementTreeResponseHandler()
     elif args.parser == 'cetree':
@@ -320,7 +317,6 @@ def main():
     from . import config
     reactor.callWhenRunning(send_requests, client, config)
     reactor.run()
-    print >>sys.stderr, "Peak virtual memory useage:", get_vmpeak()
     sys.exit(exit_status)
 
 

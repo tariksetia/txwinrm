@@ -36,6 +36,36 @@ from twisted.web._newclient import ResponseFailed
 from . import contstants as c
 
 
+class EnumerationContextTracker(object):
+
+    def __init__(self):
+        self._enumeration_context = None
+        self._end_of_sequence = False
+
+    @property
+    def enumeration_context(self):
+        if not self._end_of_sequence:
+            return self._enumeration_context
+
+    def append_element(self, uri, localname, text):
+        if uri == c.XML_NS_ENUMERATION:
+            if localname == c.WSENUM_ENUMERATION_CONTEXT:
+                self._enumeration_context = text
+            elif localname == c.WSENUM_END_OF_SEQUENCE:
+                self._end_of_sequence = True
+
+
+class TagComparer(object):
+
+    def __init__(self, uri, localname):
+        self._uri = uri.lower()
+        self._localname = localname.lower()
+
+    def matches(self, uri, localname):
+        return self._uri == uri.lower() \
+            and self._localname == localname.lower()
+
+
 class EtreeEventHandler(object):
     """Used by ElementTree and cElementTree parsing"""
 
@@ -44,6 +74,8 @@ class EtreeEventHandler(object):
         self._accumulator = accumulator
         self._resource_uri = resource_uri
         self._cim_class = cim_class
+        self._tracker = EnumerationContextTracker()
+        self._in_items = False
 
     def handle_event(self, event, elem):
         if '}' in elem.tag:
@@ -52,17 +84,28 @@ class EtreeEventHandler(object):
             uri = ''
             localname = elem.tag
         uri = uri[1:]
+        tag = TagComparer(uri, localname)
+        if tag.matches(c.XML_NS_WS_MAN, c.WSENUM_ITEMS) \
+                or tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_ITEMS):
+            self._in_items = event == 'start'
+            return
         if event == "start":
-            if (uri.lower() == self._resource_uri.lower()
-                and localname.lower() == self._cim_class.lower()) \
-                or (uri.lower() == c.XML_NS_WS_MAN.lower()
-                    and localname.lower() == c.WSM_XML_FRAGMENT.lower()):
+            if self._in_items \
+                and (tag.matches(self._resource_uri, self._cim_class)
+                     or tag.matches(c.XML_NS_WS_MAN, c.WSM_XML_FRAGMENT)):
                 self._accumulator.new_instance()
             return
         if event == "end":
             if elem.text:
-                self._accumulator.append_element(uri, localname, elem.text)
+                if self._in_items:
+                    self._accumulator.append_element(uri, localname, elem.text)
+                else:
+                    self._tracker.append_element(uri, localname, elem.text)
             self._root.clear()
+
+    @property
+    def enumeration_context(self):
+        return self._tracker.enumeration_context
 
 
 class AsyncParseReader(Protocol):
@@ -73,11 +116,18 @@ class AsyncParseReader(Protocol):
         self._finished = finished_func
         if finished_func is None:
             self._finished = xml_parser.finished
+        self._debug_data = ''
 
     def dataReceived(self, data):
+        if c.DEBUG:
+            self._debug_data += data
         self._xml_parser.feed(data)
 
     def connectionLost(self, reason):
+        if c.DEBUG:
+            import xml.dom.minidom
+            xml = xml.dom.minidom.parseString(self._debug_data)
+            print xml.toprettyxml()
         if isinstance(reason.value, ResponseFailed):
             print "Connection lost:", reason.value.reasons[0]
         self._finished()
@@ -116,6 +166,7 @@ class cElementTreeResponseHandler(object):
         handler = EtreeEventHandler(root, accumulator, resource_uri, cim_class)
         for event, elem in context:
             handler.handle_event(event, elem)
+        defer.returnValue(handler.enumeration_context)
 
 
 # ElementTree parsing ---------------------------------------------------------
@@ -171,6 +222,7 @@ class ElementTreeResponseHandler(object):
             if event is None:
                 break
             handler.handle_event(event, elem)
+        defer.returnValue(handler.enumeration_context)
 
 
 # sax expat parsing -----------------------------------------------------------
@@ -181,43 +233,48 @@ class WsmanSaxContentHandler(sax.handler.ContentHandler):
         self._accumulator = accumulator
         self._resource_uri = resource_uri
         self._cim_class = cim_class
+        self._tracker = EnumerationContextTracker()
         self._buffer = StringIO()
+        self._in_items = False
+
+    @property
+    def enumeration_context(self):
+        return self._tracker.enumeration_context
 
     def startElementNS(self, name, qname, attrs):
-        uri, localname = name
-        if uri is None:
-            uri = ''
-        print 'DEBUG', uri.lower(), '.', localname.lower()
-        if (uri.lower() == self._resource_uri.lower()
-                and localname.lower() == self._cim_class.lower()) \
-                or (uri.lower() == c.XML_NS_WS_MAN.lower()
-                    and localname.lower() == c.WSM_XML_FRAGMENT.lower()):
+        uri, localname, tag = self._element('start', name)
+        if self._in_items \
+                and (tag.matches(self._resource_uri, self._cim_class)
+                     or tag.matches(c.XML_NS_WS_MAN, c.WSM_XML_FRAGMENT)):
             self._accumulator.new_instance()
 
     def endElementNS(self, name, qname):
+        uri, localname, tag = self._element('end', name)
         text = self._buffer.getvalue()
         self._buffer.reset()
         self._buffer.truncate()
         if text:
-            uri, localname = name
-            if uri is None:
-                uri = ''
-            self._accumulator.append_element(uri, localname, text)
+            if self._in_items:
+                self._accumulator.append_element(uri, localname, text)
+            else:
+                self._tracker.append_element(uri, localname, text)
 
     def characters(self, content):
         self._buffer.write(content)
 
-    def print_elems_with_text(self):
-        self._accumulator.print_elems_with_text()
-
-    @property
-    def enumeration_context(self):
-        return self._accumulator.enumeration_context
+    def _element(self, event, name):
+        uri, localname = name
+        if uri is None:
+            uri = ''
+        tag = TagComparer(uri, localname)
+        if tag.matches(c.XML_NS_WS_MAN, c.WSENUM_ITEMS) \
+                or tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_ITEMS):
+            self._in_items = event == 'start'
+        return uri, localname, tag
 
 
 class ExpatResponseHandler(object):
 
-    @defer.inlineCallbacks
     def handle_response(self, response, resource_uri, cim_class, accumulator):
         parser = sax.make_parser()
         parser.setFeature(sax.handler.feature_namespaces, True)
@@ -226,8 +283,8 @@ class ExpatResponseHandler(object):
         d = defer.Deferred()
 
         def finished():
-            d.callback(None)
+            d.callback(handler.enumeration_context)
 
         reader = AsyncParseReader(parser, finished)
         response.deliverBody(reader)
-        yield d
+        return d
