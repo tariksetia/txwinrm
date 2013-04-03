@@ -1,3 +1,11 @@
+##############################################################################
+#
+# Copyright (C) Zenoss, Inc. 2013, all rights reserved.
+#
+# This content is made available according to terms specified in
+# License.zenoss under the directory where your Zenoss product is installed.
+#
+##############################################################################
 
 hosts = dict(
     gilroy=('Administrator', 'Z3n0ss'),
@@ -44,7 +52,6 @@ wqls = [
     'Select deviceid,InstalledSize From Win32_CacheMemory',
 
     'Select deviceid,description,manufacturer,socketdesignation,'
-
     'currentclockspeed,extclock,currentvoltage,l2cachesize,version From '
     'Win32_Processor',
 

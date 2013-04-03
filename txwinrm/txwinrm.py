@@ -13,23 +13,16 @@
 Use twisted web client to enumerate/pull WQL query.
 """
 
+import logging
 import sys
-import os
-import base64
-import httplib
 from argparse import ArgumentParser
-
 from twisted.internet import reactor, defer
-from twisted.internet.protocol import Protocol
 from twisted.internet.error import TimeoutError
-from twisted.web.client import Agent
-from twisted.web.http_headers import Headers
+from . import client as client_module
 
-from . import contstants as c
-from . import response as r
-
+DEBUG = False
 GLOBAL_ELEMENT_COUNT = 0
-CONNECT_TIMEOUT = 1
+exit_status = 0
 
 
 def get_vmpeak():
@@ -38,11 +31,6 @@ def get_vmpeak():
             key, value = line.split(None, 1)
             if key == 'VmPeak:':
                 return value
-
-
-def get_request_template(name):
-    basedir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(basedir, 'request', name + '.xml')
 
 
 class ElementPrinter(object):
@@ -59,8 +47,7 @@ class ElementPrinter(object):
 
     def append_element(self, uri, localname, text):
         global GLOBAL_ELEMENT_COUNT
-        if text:
-            GLOBAL_ELEMENT_COUNT += 1
+        GLOBAL_ELEMENT_COUNT += 1
         self._elems_with_text.append((localname, text))
 
     def print_elements_with_text(self, result):
@@ -85,114 +72,6 @@ class ProcessStatsAccumulator(object):
                                      'PercentProcessorTime',
                                      'Timestamp_Sys100NS']:
             self.process_stats[-1][localname] = text
-
-
-class StringProducer(object):
-
-    def __init__(self, body):
-        self.body = body
-        self.length = len(body)
-
-    def startProducing(self, consumer):
-        consumer.write(self.body)
-        return defer.succeed(None)
-
-
-class ErrorReader(Protocol):
-
-    def __init__(self, hostname, wql):
-        self.d = defer.Deferred()
-        self._hostname = hostname
-        self._wql = wql
-        self._data = ""
-
-    def dataReceived(self, data):
-        self._data += data
-
-    def connectionLost(self, reason):
-        from xml.etree import ElementTree
-        tree = ElementTree.fromstring(self._data)
-        print >>sys.stderr, self._hostname, "-->", self._wql
-        print >>sys.stderr, tree.findtext("Envelope/Body/Fault/Reason/Text")
-        print >>sys.stderr, tree.findtext(
-            "Envelope/Body/Fault/Detail/MSFT_WmiError/Message")
-        self.d.callback(None)
-
-
-class Unauthorized(Exception):
-    pass
-
-
-class WinrmClient(object):
-
-    def __init__(self, agent, handler):
-        self._agent = agent
-        self._handler = handler
-        self._unauthorized_hosts = []
-        self._timedout_hosts = []
-
-    @defer.inlineCallbacks
-    def enumerate(self, hostname, username, password, wql, accumulator):
-        if hostname in self._unauthorized_hosts:
-            if c.DEBUG:
-                print hostname, "previously returned unauthorized. Skipping."
-            return
-        if hostname in self._timedout_hosts:
-            if c.DEBUG:
-                print hostname, "previously timed out. Skipping."
-            return
-        url = "http://{hostname}:5985/wsman".format(hostname=hostname)
-        authstr = "{username}:{password}".format(username=username,
-                                                 password=password)
-        auth = 'Basic ' + base64.encodestring(authstr).strip()
-        headers = Headers(
-            {'Content-Type': ['application/soap+xml;charset=UTF-8'],
-             'Authorization': [auth]})
-        request_fmt_filename = get_request_template('enumerate')
-        resource_uri_prefix = c.WMICIMV2
-        cim_class = wql.split()[-1]
-        resource_uri = resource_uri_prefix + '/' + cim_class
-        enumeration_context = None
-        try:
-            while True:
-                with open(request_fmt_filename) as f:
-                    request_fmt = f.read()
-                request = request_fmt.format(
-                    resource_uri=resource_uri_prefix + '/*',
-                    wql=wql,
-                    enumeration_context=enumeration_context)
-                if c.DEBUG:
-                    print request
-                body = StringProducer(request)
-                response = yield self._agent.request('POST', url, headers,
-                                                     body)
-                if c.DEBUG:
-                    print hostname, "HTTP status:", response.code
-                if response.code == httplib.UNAUTHORIZED:
-                    if hostname in self._unauthorized_hosts:
-                        return
-                    self._unauthorized_hosts.append(hostname)
-                    raise Unauthorized("unauthorized, check username and "
-                                       "password.")
-                if response.code != 200:
-                    reader = ErrorReader(hostname, wql)
-                    response.deliverBody(reader)
-                    yield reader.d
-                    raise Exception("HTTP status" + str(response.code))
-                enumeration_context = yield self._handler.handle_response(
-                    response, resource_uri, cim_class, accumulator)
-                if not enumeration_context:
-                    break
-                request_fmt_filename = get_request_template('pull')
-        except TimeoutError, e:
-            if hostname in self._timedout_hosts:
-                return
-            self._timedout_hosts.append(hostname)
-            print >>sys.stderr, "ERROR:", hostname, e
-            raise
-        except Exception, e:
-            print >>sys.stderr, "ERROR:", hostname, e
-            raise
 
 
 @defer.inlineCallbacks
@@ -229,9 +108,6 @@ def calculate_remote_cpu_util(initial_stats, final_stats):
                                            name=name, pid=pid)
 
 
-exit_status = 0
-
-
 @defer.inlineCallbacks
 def send_requests(client, config):
     global exit_status
@@ -242,7 +118,7 @@ def send_requests(client, config):
             initial_wmiprvse_stats[hostname] = yield get_remote_process_stats(
                 client, hostname, username, password)
             good_hosts.append((hostname, username, password))
-        except Unauthorized:
+        except client_module.Unauthorized:
             continue
         except TimeoutError:
             continue
@@ -285,6 +161,18 @@ def send_requests(client, config):
     dl.addCallback(dl_callback)
 
 
+class ConsoleLogger(object):
+
+    def isEnabledFor(self, level):
+        return DEBUG or level > logging.INFO
+
+    def error(self, message):
+        print >>sys.stderr, "ERROR:", message
+
+    def debug(self, message):
+        print message
+
+
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--parser", "-p", default='sax',
@@ -294,26 +182,11 @@ def parse_args():
 
 
 def main():
+    global DEBUG
     args = parse_args()
-    c.DEBUG = args.debug
-    try:
-        # HTTPConnectionPool has been present since Twisted version 12.1
-        from twisted.web.client import HTTPConnectionPool
-        pool = HTTPConnectionPool(reactor, persistent=True)
-        pool.maxPersistentPerHost = c.MAX_PERSISTENT_PER_HOST
-        pool.cachedConnectionTimeout = c.CACHED_CONNECTION_TIMEOUT
-        agent = Agent(reactor, connectTimeout=CONNECT_TIMEOUT, pool=pool)
-    except ImportError:
-        agent = Agent(reactor, connectTimeout=CONNECT_TIMEOUT)
-    if args.parser == 'etree':
-        handler = r.ElementTreeResponseHandler()
-    elif args.parser == 'cetree':
-        handler = r.cElementTreeResponseHandler()
-    elif args.parser == 'sax':
-        handler = r.ExpatResponseHandler()
-    else:
-        raise Exception("unkown parser: " + args.parser)
-    client = WinrmClient(agent, handler)
+    DEBUG = args.debug
+    factory = client_module.WinrmClientFactory(ConsoleLogger())
+    client = factory.create_winrm_client(args.parser)
     from . import config
     reactor.callWhenRunning(send_requests, client, config)
     reactor.run()
