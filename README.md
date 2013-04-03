@@ -4,6 +4,25 @@ txwinrm
 Asynchronous Python WinRM client
 
 
+Current Feature Support
+-----------------------
+
+* HTTP
+* Basic authentication
+* WQL queries
+
+
+Future Feature Support
+----------------------
+
+* HTTPS
+* Kerberos authentication (domain accounts)
+* NTLM authentication (local accounts)
+* Subscribe to the Windows Event Log
+* WinRS
+* PerfMon over WinRS
+
+
 Installation
 ------------
 
@@ -11,6 +30,24 @@ You can run this application in place after checking it out from github, or
 install it in your Python site libraries with:
 
     $ python setup.py install
+
+
+Dependencies
+------------
+
+Python 2.7
+Twisted 11.0 or later (utilizes HTTP connection pools with Twisted 12.1 or later)
+
+
+Configuring the Target Windows Machines
+---------------------------------------
+
+You can enable the WinRM service on Windows Server 2003, 2008 and 2012. Run
+Command Prompt as Administrator and execute the following commands
+
+    winrm quickconfig
+    winrm s winrm/config/service @{AllowUnencrypted="true"}
+    winrm s winrm/config/service/auth @{Basic="true"}
 
 
 Basic Useage
