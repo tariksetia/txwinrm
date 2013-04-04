@@ -110,7 +110,7 @@ class WinrmClientFactory(object):
             pool.cachedConnectionTimeout = c.CACHED_CONNECTION_TIMEOUT
             return Agent(reactor, connectTimeout=c.CONNECT_TIMEOUT, pool=pool)
         except ImportError:
-            return Agent(reactor, connectTimeout=c.CONNECT_TIMEOUT)
+            return Agent(reactor)
 
     def _create_response_handler(self, xml_parser):
         if xml_parser == 'etree':
