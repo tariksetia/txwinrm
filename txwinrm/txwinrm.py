@@ -1,5 +1,3 @@
-#! /usr/bin/env python
-
 ##############################################################################
 #
 # Copyright (C) Zenoss, Inc. 2013, all rights reserved.

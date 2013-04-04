@@ -25,6 +25,7 @@ Choices for XML parsers of SOAP responses from WinRM services:
 import logging
 from collections import deque
 from cStringIO import StringIO
+from datetime import datetime
 
 from xml.etree import cElementTree
 from xml.etree import ElementTree
@@ -141,11 +142,18 @@ class StringIOReader(Protocol):
         self._logger = logger
         self.deferred_string_io = defer.Deferred()
         self._string_io = StringIO()
+        self._debug_data = ''
 
     def dataReceived(self, data):
+        if self._logger.isEnabledFor(logging.DEBUG):
+            self._debug_data += data
         self._string_io.write(data)
 
     def connectionLost(self, reason):
+        if self._logger.isEnabledFor(logging.DEBUG):
+            import xml.dom.minidom
+            xml = xml.dom.minidom.parseString(self._debug_data)
+            self._logger.debug(xml.toprettyxml())
         if isinstance(reason.value, ResponseFailed):
             self._logger.error("Connection lost: {0}".format(
                 reason.value.reasons[0]))
@@ -242,13 +250,18 @@ class WsmanSaxContentHandler(sax.handler.ContentHandler):
         self._tracker = EnumerationContextTracker()
         self._buffer = StringIO()
         self._in_items = False
+        self._property = None
 
     @property
     def enumeration_context(self):
         return self._tracker.enumeration_context
 
     def startElementNS(self, name, qname, attrs):
-        self._element('start', name)
+        uri, localname, tag = self._element('start', name)
+        if localname is None:
+            return
+        if not tag.matches(c.XML_NS_CIM_SCHEMA, "datetime"):
+            self._property = localname
 
     def endElementNS(self, name, qname):
         text = self._buffer.getvalue()
@@ -259,7 +272,16 @@ class WsmanSaxContentHandler(sax.handler.ContentHandler):
         if localname is None:
             return
         if self._in_items:
-            self._accumulator.append_element(uri, localname, text)
+            if tag.matches(c.XML_NS_CIM_SCHEMA, "datetime"):
+                if '.' in text:
+                    format = "%Y-%m-%dT%H:%M:%S.%fZ"
+                else:
+                    format = "%Y-%m-%dT%H:%M:%SZ"
+                date = datetime.strptime(text, format)
+                self._accumulator.append_element(uri, self._property, date)
+                self._property = None
+            elif self._property is not None:
+                self._accumulator.append_element(uri, localname, text)
         else:
             self._tracker.append_element(uri, localname, text)
 

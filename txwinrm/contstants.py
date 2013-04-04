@@ -11,6 +11,7 @@ MAX_PERSISTENT_PER_HOST = 2
 CACHED_CONNECTION_TIMEOUT = 240
 CONNECT_TIMEOUT = 5
 
+XML_NS_CIM_SCHEMA = "http://schemas.dmtf.org/wbem/wscim/1/common"
 XML_NS_WS_MAN = 'http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd'
 XML_NS_ENUMERATION = 'http://schemas.xmlsoap.org/ws/2004/09/enumeration'
 XML_NS_MSWSMAN = 'http://schemas.microsoft.com/wbem/wsman/1/wsman.xsd'

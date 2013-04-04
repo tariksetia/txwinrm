@@ -98,10 +98,15 @@ class WinrmClient(object):
 
 class WinrmClientFactory(object):
 
+    agent = None
+
     def __init__(self, logger):
         self._logger = logger
 
-    def _create_agent(self):
+    @classmethod
+    def _get_or_create_agent(cls):
+        if cls.agent is not None:
+            return cls.agent
         try:
             # HTTPConnectionPool has been present since Twisted version 12.1
             from twisted.web.client import HTTPConnectionPool
@@ -110,7 +115,11 @@ class WinrmClientFactory(object):
             pool.cachedConnectionTimeout = c.CACHED_CONNECTION_TIMEOUT
             return Agent(reactor, connectTimeout=c.CONNECT_TIMEOUT, pool=pool)
         except ImportError:
-            return Agent(reactor)
+            try:
+                # connectTimeout first showed up in Twisted version 11.1
+                return Agent(reactor, connectTimeout=c.CONNECT_TIMEOUT)
+            except TypeError:
+                return Agent(reactor)
 
     def _create_response_handler(self, xml_parser):
         if xml_parser == 'etree':
@@ -123,8 +132,11 @@ class WinrmClientFactory(object):
         return response_module.ExpatResponseHandler(self._logger)
 
     def create_winrm_client(self, xml_parser='sax'):
-        agent = self._create_agent()
         handler = self._create_response_handler(xml_parser)
+        return self.create_winrm_client_with_handler(handler)
+
+    def create_winrm_client_with_handler(self, handler):
+        agent = self._get_or_create_agent()
         return WinrmClient(agent, handler, self._logger)
 
 
