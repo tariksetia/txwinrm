@@ -61,16 +61,16 @@ def mkdir_p(path):
             raise
 
 
-class CaptionAccumulator(object):
+class SingleValueAccumulator(object):
 
     def __init__(self):
-        self.caption = None
+        self.value = None
 
     def new_instance(self):
         pass
 
-    def append_element(self, uri, localname, text):
-        self.caption = text
+    def add_property(self, name, value):
+        self.value = value
 
 
 class PropertiesAccumulator(object):
@@ -81,8 +81,8 @@ class PropertiesAccumulator(object):
     def new_instance(self):
         pass
 
-    def append_element(self, uri, localname, text):
-        self.properties.add(localname)
+    def add_property(self, name, value):
+        self.properties.add(name)
 
 
 class WriteXmlToFileProtocol(Protocol):
@@ -113,9 +113,9 @@ class WriteXmlToFileHandler(object):
 @defer.inlineCallbacks
 def get_subdirname(client):
     wql = 'select caption from Win32_OperatingSystem'
-    accumulator = CaptionAccumulator()
+    accumulator = SingleValueAccumulator()
     yield client.enumerate(HOSTNAME, USERNAME, PASSWORD, wql, accumulator)
-    match = re.search(r'(2003|2008|2012)', accumulator.caption)
+    match = re.search(r'(2003|2008|2012)', accumulator.value)
     defer.returnValue('server_{0}'.format(match.group(1)))
 
 

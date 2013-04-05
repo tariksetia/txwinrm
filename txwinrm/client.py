@@ -16,30 +16,31 @@ from twisted.internet.protocol import Protocol
 from twisted.internet.error import TimeoutError
 from twisted.web.client import Agent
 from twisted.web.http_headers import Headers
-from . import response as response_module
+from .response import SaxResponseHandler
 from . import constants as c
+
+log = logging.getLogger('zen.winrm')
 
 
 class WinrmClient(object):
 
-    def __init__(self, agent, handler, logger):
+    def __init__(self, agent, handler):
         self._agent = agent
         self._handler = handler
-        self._logger = logger
         self._unauthorized_hosts = []
         self._timedout_hosts = []
 
     @defer.inlineCallbacks
     def enumerate(self, hostname, username, password, wql, accumulator):
         if hostname in self._unauthorized_hosts:
-            if self._logger.isEnabledFor(logging.DEBUG):
-                self._logger.debug(hostname + " previously returned "
-                                   "unauthorized. Skipping.")
+            if log.isEnabledFor(logging.DEBUG):
+                log.debug(hostname + " previously returned "
+                                     "unauthorized. Skipping.")
             return
         if hostname in self._timedout_hosts:
-            if self._logger.isEnabledFor(logging.DEBUG):
-                self._logger.debug(hostname + " previously timed out. "
-                                   "Skipping.")
+            if log.isEnabledFor(logging.DEBUG):
+                log.debug(hostname + " previously timed out. "
+                                     "Skipping.")
             return
         url = "http://{hostname}:5985/wsman".format(hostname=hostname)
         authstr = "{username}:{password}".format(username=username,
@@ -50,8 +51,6 @@ class WinrmClient(object):
              'Authorization': [auth]})
         request_fmt_filename = get_request_template('enumerate')
         resource_uri_prefix = c.WMICIMV2
-        cim_class = wql.split()[-1]
-        resource_uri = resource_uri_prefix + '/' + cim_class
         enumeration_context = None
         try:
             while True:
@@ -61,13 +60,13 @@ class WinrmClient(object):
                     resource_uri=resource_uri_prefix + '/*',
                     wql=wql,
                     enumeration_context=enumeration_context)
-                if self._logger.isEnabledFor(logging.DEBUG):
-                    self._logger.debug(request)
+                if log.isEnabledFor(logging.DEBUG):
+                    log.debug(request)
                 body = StringProducer(request)
                 response = yield self._agent.request('POST', url, headers,
                                                      body)
-                if self._logger.isEnabledFor(logging.DEBUG):
-                    self._logger.debug("{0} HTTP status: {1}".format(
+                if log.isEnabledFor(logging.DEBUG):
+                    log.debug("{0} HTTP status: {1}".format(
                         hostname, response.code))
                 if response.code == httplib.UNAUTHORIZED:
                     if hostname in self._unauthorized_hosts:
@@ -76,12 +75,12 @@ class WinrmClient(object):
                     raise Unauthorized("unauthorized, check username and "
                                        "password.")
                 if response.code != 200:
-                    reader = ErrorReader(hostname, wql, self._logger)
+                    reader = ErrorReader(hostname, wql, log)
                     response.deliverBody(reader)
                     yield reader.d
                     raise Exception("HTTP status" + str(response.code))
                 enumeration_context = yield self._handler.handle_response(
-                    response, resource_uri, cim_class, accumulator)
+                    response, accumulator)
                 if not enumeration_context:
                     break
                 request_fmt_filename = get_request_template('pull')
@@ -89,19 +88,16 @@ class WinrmClient(object):
             if hostname in self._timedout_hosts:
                 return
             self._timedout_hosts.append(hostname)
-            self._logger.error('{0} {1}'.format(hostname, e))
+            log.error('{0} {1}'.format(hostname, e))
             raise
         except Exception, e:
-            self._logger.error('{0} {1}'.format(hostname, e))
+            log.error('{0} {1}'.format(hostname, e))
             raise
 
 
 class WinrmClientFactory(object):
 
     agent = None
-
-    def __init__(self, logger):
-        self._logger = logger
 
     @classmethod
     def _get_or_create_agent(cls):
@@ -121,32 +117,21 @@ class WinrmClientFactory(object):
             except TypeError:
                 return Agent(reactor)
 
-    def _create_response_handler(self, xml_parser):
-        if xml_parser == 'etree':
-            return response_module.ElementTreeResponseHandler(self._logger)
-        if xml_parser == 'cetree':
-            return response_module.cElementTreeResponseHandler(self._logger)
-        if xml_parser != 'sax' and self._logger.isEnabledFor(logging.DEBUG):
-            self._logger.debug('Unknown XML parser "' + xml_parser
-                               + '", using SAX parser')
-        return response_module.ExpatResponseHandler(self._logger)
-
-    def create_winrm_client(self, xml_parser='sax'):
-        handler = self._create_response_handler(xml_parser)
+    def create_winrm_client(self):
+        handler = SaxResponseHandler()
         return self.create_winrm_client_with_handler(handler)
 
     def create_winrm_client_with_handler(self, handler):
         agent = self._get_or_create_agent()
-        return WinrmClient(agent, handler, self._logger)
+        return WinrmClient(agent, handler)
 
 
 class ErrorReader(Protocol):
 
-    def __init__(self, hostname, wql, logger):
+    def __init__(self, hostname, wql):
         self.d = defer.Deferred()
         self._hostname = hostname
         self._wql = wql
-        self._logger = logger
         self._data = ""
 
     def dataReceived(self, data):
@@ -155,9 +140,9 @@ class ErrorReader(Protocol):
     def connectionLost(self, reason):
         from xml.etree import ElementTree
         tree = ElementTree.fromstring(self._data)
-        self._logger.error("{0._hostname} --> {0._wql}".format(self))
-        self._logger.error(tree.findtext("Envelope/Body/Fault/Reason/Text"))
-        self._logger.error(tree.findtext(
+        log.error("{0._hostname} --> {0._wql}".format(self))
+        log.error(tree.findtext("Envelope/Body/Fault/Reason/Text"))
+        log.error(tree.findtext(
             "Envelope/Body/Fault/Detail/MSFT_WmiError/Message"))
         self.d.callback(None)
 

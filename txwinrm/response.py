@@ -25,33 +25,39 @@ log = logging.getLogger('zen.winrm')
 
 class SaxResponseHandler(object):
 
-    def __init__(self):
-        self._parser = sax.make_parser()
-        self._parser.setFeature(sax.handler.feature_namespaces, True)
-
     @defer.inlineCallbacks
     def handle_response(self, response, accumulator):
+        parser = sax.make_parser()
+        parser.setFeature(sax.handler.feature_namespaces, True)
         text_buffer = TextBufferingContentHandler()
-        handler = ChainingContentHandler([
+        factory = EnvelopeHandlerFactory(text_buffer, accumulator)
+        content_handler = ChainingContentHandler([
             text_buffer,
-            DispatchingContentHandler(EnvelopeHandlerFactory(text_buffer)),
-        ])
-        self._parser.setContentHandler(handler)
-        reader = ParserFeedingProtocol(self._parser)
+            DispatchingContentHandler(factory)])
+        parser.setContentHandler(content_handler)
+        reader = ParserFeedingProtocol(parser)
         response.deliverBody(reader)
         yield reader.d
-        defer.returnValue(self._handler.enumeration_context)
+        defer.returnValue(factory.enumeration_context)
+
+
+def safe_lower_equals(left, right):
+    left_l, right_l = [None if s is None else s.lower() for s in left, right]
+    return left_l == right_l
 
 
 class TagComparer(object):
 
     def __init__(self, uri, localname):
-        self.uri = uri.lower()
-        self.localname = localname.lower()
+        self.uri = uri
+        self.localname = localname
 
     def matches(self, uri, localname):
-        return self.uri == uri.lower() \
-            and self.localname == localname.lower()
+        return safe_lower_equals(self.uri, uri) \
+            and safe_lower_equals(self.localname, localname)
+
+    def __repr__(self):
+        return str((self.uri, self.localname))
 
 
 def create_tag_comparer(name):
@@ -69,13 +75,19 @@ class ParserFeedingProtocol(Protocol):
     def dataReceived(self, data):
         if log.isEnabledFor(logging.DEBUG):
             self._debug_data += data
+            log.debug("ParserFeedingProtocol dataReceived {0}"
+                      .format(data))
         self._xml_parser.feed(data)
 
     def connectionLost(self, reason):
-        if log.isEnabledFor(logging.DEBUG):
-            import xml.dom.minidom
-            xml = xml.dom.minidom.parseString(self._debug_data)
-            log.debug(xml.toprettyxml())
+        if self._debug_data and log.isEnabledFor(logging.DEBUG):
+            try:
+                import xml.dom.minidom
+                xml = xml.dom.minidom.parseString(self._debug_data)
+                log.debug(xml.toprettyxml())
+            except:
+                log.debug('Could not prettify response XML: "{0}"'
+                          .format(self._debug_data))
         if isinstance(reason.value, ResponseFailed):
             log.error("Connection lost: {0}".format(reason.value.reasons[0]))
         self.d.callback(None)
@@ -94,15 +106,23 @@ class ChainingContentHandler(sax.handler.ContentHandler):
         for handler in self._chain:
             handler.endElementNS(name, qname)
 
+    def characters(self, content):
+        for handler in self._chain:
+            handler.characters(content)
+
 
 class TextBufferingContentHandler(sax.handler.ContentHandler):
 
-    def __init__(self, subhandler_factory):
+    def __init__(self):
         self._buffer = StringIO()
-        self.text = None
+        self._text = None
+
+    @property
+    def text(self):
+        return self._text
 
     def endElementNS(self, name, qname):
-        self.text = self._buffer.getvalue()
+        self._text = self._buffer.getvalue()
         self._buffer.reset()
         self._buffer.truncate()
 
@@ -113,26 +133,34 @@ class TextBufferingContentHandler(sax.handler.ContentHandler):
 class DispatchingContentHandler(sax.handler.ContentHandler):
 
     def __init__(self, subhandler_factory):
-        self._subhandler_factory
+        self._subhandler_factory = subhandler_factory
         self._subhandler_tag = None
         self._subhandler = None
 
     def startElementNS(self, name, qname, attrs):
-        if self._subhandler is not None:
-            self._subhandler.startElementNS(name, qname, attrs)
+        log.debug('DispatchingContentHandler startElementNS {0} {1} {2}'
+                  .format(name, self._subhandler, self._subhandler_tag))
         if self._subhandler is None:
             self._subhandler, tag = self._get_subhandler_for(name)
             if self._subhandler is not None:
                 self._subhandler_tag = tag
+                log.debug('new subhandler {0} {1}'
+                          .format(self._subhandler, self._subhandler_tag))
+
+        if self._subhandler is not None:
+            self._subhandler.startElementNS(name, qname, attrs)
 
     def endElementNS(self, name, qname):
+        log.debug('DispatchingContentHandler endElementNS {0} {1}'
+                  .format(name, self._subhandler))
+        if self._subhandler is not None:
+            self._subhandler.endElementNS(name, qname)
         if self._subhandler_tag is not None:
             uri, localname = name
             if self._subhandler_tag.matches(uri, localname):
                 self._subhandler_tag = None
                 self._subhandler = None
-        if self._subhandler is not None:
-            self._subhandler.endElementNS(name, qname)
+                log.debug('removed subhandler')
 
     def _get_subhandler_for(self, name):
         tag = create_tag_comparer(name)
@@ -141,22 +169,31 @@ class DispatchingContentHandler(sax.handler.ContentHandler):
 
 class EnvelopeHandlerFactory(object):
 
-    def __init__(self, text_buffer):
-        self._header_handler = HeaderContentHandler(text_buffer)
-        self._items_handler = ItemsContentHandler(text_buffer)
+    def __init__(self, text_buffer, accumulator):
+        self._enumerate = EnumerateContentHandler(text_buffer)
+        self._items = ItemsContentHandler(text_buffer, accumulator)
+
+    @property
+    def enumeration_context(self):
+        return self._enumerate.enumeration_context
 
     def get_handler_for(self, tag):
-        if tag.matches(c.XML_NS_SOAP_1_2, c.SOAP_HEADER):
-            return self._header_handler
-        if tag.matches(c.XML_NS_WS_MAN, c.WSENUM_ITEMS) \
+        handler = None
+        if tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_ENUMERATION_CONTEXT) \
+                or tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_END_OF_SEQUENCE):
+            handler = self._enumerate
+        elif tag.matches(c.XML_NS_WS_MAN, c.WSENUM_ITEMS) \
                 or tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_ITEMS):
-            return self._items_handler
+            handler = self._items
+        log.debug('EnvelopeHandlerFactory get_handler_for {0} {1}'
+                  .format(tag, handler))
+        return handler
 
 
-class HeaderContentHandler(sax.handler.ContentHandler):
+class EnumerateContentHandler(sax.handler.ContentHandler):
 
     def __init__(self, text_buffer):
-        self._text_buffer
+        self._text_buffer = text_buffer
         self._enumeration_context = None
         self._end_of_sequence = False
 
@@ -175,100 +212,54 @@ class HeaderContentHandler(sax.handler.ContentHandler):
 
 class ItemsContentHandler(sax.handler.ContentHandler):
 
-    def __init__(self, text_buffer):
+    def __init__(self, text_buffer, accumulator):
         self._text_buffer = text_buffer
-        self._nil = False
+        self._accumulator = accumulator
         self._tag_stack = deque()
         self._value = None
 
     def startElementNS(self, name, qname, attrs):
-        if len(self._tag_stack) > 1:
-            raise Exception("tag stack too long: {0}".format(self._tag_stack))
+        log.debug('ItemsContentHandler startElementNS {0} v="{1}" t="{2}" {3}'
+                  .format(name, self._value, self._text_buffer.text,
+                          self._tag_stack))
         tag = create_tag_comparer(name)
-        self._tag_stack.append(tag)
-        if not self._tag_stack:
-            # instance
-            pass
-        elif len(self._tag_stack) == 1:
-            # property
-            pass
+        if len(self._tag_stack) > 3:
+            raise Exception("tag stack too long: {0} {1}"
+                            .format([t.localname for t in self._tag_stack],
+                                    tag.localname))
+        if len(self._tag_stack) == 1:
+            self._accumulator.new_instance()
         elif len(self._tag_stack) == 2:
-            # date
-            pass
-        else:
-            
+            if attrs.get((c.XML_NS_BUILTIN, c.BUILTIN_NIL), None) == 'true':
+                self._value = (None,)
+        self._tag_stack.append(tag)
 
     def endElementNS(self, name, qname):
+        log.debug('ItemsContentHandler endElementNS {0} v="{1}" t="{2}" {3}'
+                  .format(name, self._value, self._text_buffer.text,
+                          self._tag_stack))
         tag = create_tag_comparer(name)
         popped_tag = self._tag_stack.pop()
         if not popped_tag.matches(tag.uri, tag.localname):
             raise Exception("End of {0} when expecting {1}"
                             .format(tag.localname, popped_tag.localname))
-
-        if not self._tag_stack:
-            # instance
-            pass
+        log.debug("ItemsContentHandler endElementNS tag_stack: {0}"
+                  .format(self._tag_stack))
+        if len(self._tag_stack) == 2:
+            if self._value is None:
+                value = self._text_buffer.text
+            else:
+                value = self._value[0]
+            self._accumulator.add_property(tag.localname, value)
+            self._value = None
         elif len(self._tag_stack) == 1:
-            # property
-            pass
-        elif len(self._tag_stack) == 2:
-            # date
-            pass
-
-        self._nil = False
+            if tag.matches(c.XML_NS_CIM_SCHEMA, "datetime"):
+                self._value = (get_datetime(self._text_buffer.text),)
 
 
-
-if tag.matches(c.XML_NS_CIM_SCHEMA, "datetime"):
-                if '.' in text:
-                    format = "%Y-%m-%dT%H:%M:%S.%fZ"
-                else:
-                    format = "%Y-%m-%dT%H:%M:%SZ"
-                date = datetime.strptime(text, format)
-
-
-
-
-
-class WinrmContentHandler(object):
-
-    def __init__(self):
-        self._in_items = False
-        self._property = None
-
-    def startElementNS(self, name, qname, attrs):
-        uri, localname, tag = self._element('start', name)
-        if localname is None:
-            return
-        if not tag.matches(c.XML_NS_CIM_SCHEMA, "datetime"):
-            self._property = localname
-
-    def endElementNS(self, name, qname):
-        uri, localname, tag = self._element('end', name)
-        if localname is None:
-            return
-        if self._in_items:
-            
-                self._accumulator.append_element(uri, self._property, date)
-                self._property = None
-            elif self._property is not None:
-                self._accumulator.append_element(uri, localname, text)
-        else:
-            self._tracker.append_element(uri, localname, text)
-
-
-    def _element(self, event, name):
-        uri, localname = name
-        if uri is None:
-            uri = ''
-        tag = TagComparer(uri, localname)
-        if tag.matches(c.XML_NS_WS_MAN, c.WSENUM_ITEMS) \
-                or tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_ITEMS):
-            self._in_items = event == 'start'
-            return None, None, None
-        if tag.matches(self._resource_uri, self._cim_class) \
-                or tag.matches(c.XML_NS_WS_MAN, c.WSM_XML_FRAGMENT):
-            if event == 'start':
-                self._accumulator.new_instance()
-            return None, None, None
-        return uri, localname, tag
+def get_datetime(text):
+    if '.' in text:
+        format = "%Y-%m-%dT%H:%M:%S.%fZ"
+    else:
+        format = "%Y-%m-%dT%H:%M:%SZ"
+    return datetime.strptime(text, format)

@@ -16,9 +16,11 @@ XML_NS_CIM_SCHEMA = "http://schemas.dmtf.org/wbem/wscim/1/common"
 XML_NS_WS_MAN = 'http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd'
 XML_NS_ENUMERATION = 'http://schemas.xmlsoap.org/ws/2004/09/enumeration'
 XML_NS_MSWSMAN = 'http://schemas.microsoft.com/wbem/wsman/1/wsman.xsd'
+XML_NS_BUILTIN = 'http://www.w3.org/2001/XMLSchema-instance'
 
 SOAP_HEADER = 'Header'
 SOAP_BODY = 'Body'
+BUILTIN_NIL = 'nil'
 WSM_XML_FRAGMENT = 'XmlFragment'
 WSENUM_ENUMERATION_CONTEXT = 'EnumerationContext'
 WSENUM_END_OF_SEQUENCE = 'EndOfSequence'

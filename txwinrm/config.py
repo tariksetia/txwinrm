@@ -17,60 +17,60 @@ wqls = [
 
     # ZenPacks.zenoss.WindowsMonitor modeler plugins
     # FileSystemMap
-    # 'select * from Win32_logicaldisk',
-    # 'select * from Win32_Volume',
+    'select * from Win32_logicaldisk',
+    'select * from Win32_Volume',
 
 
     # WindowsDeviceMap
-    #'select * from Win32_OperatingSystem',
+    'select * from Win32_OperatingSystem',
     'select * from Win32_Service',
-    # 'select * from Win32_SystemEnclosure',
-    # 'select * from Win32_ComputerSystem',
+    'select * from Win32_SystemEnclosure',
+    'select * from Win32_ComputerSystem',
 
 
-    # # MemoryMap
-    # 'Select TotalVisibleMemorySize,TotalVirtualMemorySize From '
-    # 'Win32_OperatingSystem',
+    # MemoryMap
+    'Select TotalVisibleMemorySize,TotalVirtualMemorySize From '
+    'Win32_OperatingSystem',
 
 
-    # # WinServiceMap
-    # 'Select name,caption,pathName,serviceType,startMode,startName,state '
-    # 'From Win32_Service',
+    # WinServiceMap
+    'Select name,caption,pathName,serviceType,startMode,startName,state '
+    'From Win32_Service',
 
 
-    # # IpRouteMap
-    # 'Select destination,interfaceindex,mask,metric1,metric2,metric3,'
-    # 'metric4,metric5,nexthop,protocol,type From Win32_IP4RouteTable',
+    # IpRouteMap
+    'Select destination,interfaceindex,mask,metric1,metric2,metric3,'
+    'metric4,metric5,nexthop,protocol,type From Win32_IP4RouteTable',
 
 
-    # # IpInterfaceMap
-    # 'Select * From Win32_NetworkAdapterConfiguration',
+    # IpInterfaceMap
+    'Select * From Win32_NetworkAdapterConfiguration',
 
-    # 'Select * From Win32_PerfRawData_Tcpip_NetworkInterface',
-
-
-    # # CpuMap
-    # 'Select deviceid,InstalledSize From Win32_CacheMemory',
-
-    # 'Select deviceid,description,manufacturer,socketdesignation,'
-    # 'currentclockspeed,extclock,currentvoltage,l2cachesize,version From '
-    # 'Win32_Processor',
+    'Select * From Win32_PerfRawData_Tcpip_NetworkInterface',
 
 
-    # # ProcessMap
-    # 'Select * From Win32_Process',
+    # CpuMap
+    'Select deviceid,InstalledSize From Win32_CacheMemory',
+
+    'Select deviceid,description,manufacturer,socketdesignation,'
+    'currentclockspeed,extclock,currentvoltage,l2cachesize,version From '
+    'Win32_Processor',
 
 
-    # # zenwin
-    # 'SELECT Name, State, StartMode FROM Win32_Service',
+    # ProcessMap
+    'Select * From Win32_Process',
 
 
-    # # Performance Data
-    # # \Disk Read Bytes/sec
-    # 'select name,DiskReadBytesPerSec from '
-    # 'Win32_PerfRawData_PerfDisk_PhysicalDisk',
+    # zenwin
+    'SELECT Name, State, StartMode FROM Win32_Service',
 
-    # 'select * from Win32_PerfRawData_PerfProc_Process',
+
+    # Performance Data
+    # \Disk Read Bytes/sec
+    'select name,DiskReadBytesPerSec from '
+    'Win32_PerfRawData_PerfDisk_PhysicalDisk',
+
+    'select * from Win32_PerfRawData_PerfProc_Process',
 
 
     # # SoftwareMap

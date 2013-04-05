@@ -18,7 +18,8 @@ from twisted.internet import reactor, defer
 from twisted.internet.error import TimeoutError
 from . import client as client_module
 
-DEBUG = False
+logging.basicConfig()
+log = logging.getLogger('zen.winrm')
 GLOBAL_ELEMENT_COUNT = 0
 exit_status = 0
 
@@ -36,21 +37,21 @@ class ElementPrinter(object):
     def __init__(self, hostname, wql):
         self._hostname = hostname
         self._wql = wql
-        self._elems_with_text = []
+        self._properties = []
         self._demarc = '-' * 4
 
     def new_instance(self):
-        if self._elems_with_text:
-            self._elems_with_text.append((self._demarc, ''))
+        if self._properties:
+            self._properties.append((self._demarc, ''))
 
-    def append_element(self, uri, localname, text):
+    def add_property(self, name, value):
         global GLOBAL_ELEMENT_COUNT
         GLOBAL_ELEMENT_COUNT += 1
-        self._elems_with_text.append((localname, text))
+        self._properties.append((name, value))
 
     def print_elements_with_text(self, result):
         print '\n', self._hostname, "==>", self._wql
-        for tag, text in self._elems_with_text:
+        for tag, text in self._properties:
             if tag == self._demarc:
                 print ' ', self._demarc
             else:
@@ -65,11 +66,10 @@ class ProcessStatsAccumulator(object):
     def new_instance(self):
         self.process_stats.append({})
 
-    def append_element(self, uri, localname, text):
-        if not uri and localname in ['Name', 'IDProcess',
-                                     'PercentProcessorTime',
-                                     'Timestamp_Sys100NS']:
-            self.process_stats[-1][localname] = text
+    def add_property(self, name, value):
+        log.debug("ProcessStatsAccumulator add_property {0}, {1}"
+                  .format(name, value))
+        self.process_stats[-1][name] = value
 
 
 @defer.inlineCallbacks
@@ -135,61 +135,49 @@ def send_requests(client, config):
 
     @defer.inlineCallbacks
     def dl_callback(results):
-        global exit_status
-        final_wmiprvse_stats = {}
-        for hostname, (username, password) in config.hosts.iteritems():
-            final_wmiprvse_stats[hostname] = yield get_remote_process_stats(
-                client, hostname, username, password)
-        print >>sys.stderr, '\nSummary:'
-        print >>sys.stderr, '  Connected to', len(good_hosts), 'of', \
-                            len(config.hosts), 'hosts'
-        print >>sys.stderr, "  Processed", GLOBAL_ELEMENT_COUNT, "elements"
-        failure_count = 0
-        for success, result in results:
-            if not success:
-                failure_count += 1
-        if failure_count:
-            exit_status = 1
-        print >>sys.stderr, '  Failed to process', failure_count, "responses"
-        print >>sys.stderr, "  Peak virtual memory useage:", get_vmpeak()
-        print >>sys.stderr, '  Remote CPU utilization:'
-        calculate_remote_cpu_util(initial_wmiprvse_stats, final_wmiprvse_stats)
-        reactor.stop()
+        try:
+            global exit_status
+            final_wmiprvse_stats = {}
+            for hostname, (username, password) in config.hosts.iteritems():
+                final_wmiprvse_stats[hostname] = yield get_remote_process_stats(
+                    client, hostname, username, password)
+            print >>sys.stderr, '\nSummary:'
+            print >>sys.stderr, '  Connected to', len(good_hosts), 'of', \
+                                len(config.hosts), 'hosts'
+            print >>sys.stderr, "  Processed", GLOBAL_ELEMENT_COUNT, "elements"
+            failure_count = 0
+            for success, result in results:
+                if not success:
+                    failure_count += 1
+            if failure_count:
+                exit_status = 1
+            print >>sys.stderr, '  Failed to process', failure_count, "responses"
+            print >>sys.stderr, "  Peak virtual memory useage:", get_vmpeak()
+            print >>sys.stderr, '  Remote CPU utilization:'
+            calculate_remote_cpu_util(initial_wmiprvse_stats, final_wmiprvse_stats)
+        finally:
+            reactor.stop()
 
     dl.addCallback(dl_callback)
 
 
-class ConsoleLogger(object):
-
-    def isEnabledFor(self, level):
-        return DEBUG or level > logging.INFO
-
-    def error(self, message):
-        print >>sys.stderr, "ERROR:", message
-
-    def debug(self, message):
-        print message
-
-
 def parse_args():
     parser = ArgumentParser()
-    parser.add_argument("--parser", "-p", default='sax',
-                        choices=['cetree', 'etree', 'sax'])
     parser.add_argument("--debug", "-d", action="store_true")
     return parser.parse_args()
 
 
 def main():
-    global DEBUG
     args = parse_args()
-    DEBUG = args.debug
-    factory = client_module.WinrmClientFactory(ConsoleLogger())
-    client = factory.create_winrm_client(args.parser)
+    if args.debug:
+        log.setLevel(level=logging.DEBUG)
+        defer.setDebugging(True)
+    factory = client_module.WinrmClientFactory()
+    client = factory.create_winrm_client()
     from . import config
     reactor.callWhenRunning(send_requests, client, config)
     reactor.run()
     sys.exit(exit_status)
-
 
 if __name__ == '__main__':
     main()

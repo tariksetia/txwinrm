@@ -26,15 +26,14 @@ class ResultsAccumulator(object):
     def new_instance(self):
         self.results.append(Result())
 
-    def append_element(self, uri, localname, text):
-        setattr(self.results[-1], localname, text)
+    def add_property(self, name, value):
+        setattr(self.results[-1], name, value)
 
 
 class WinrmCollectClient(object):
 
-    def __init__(self, logger):
-        self._logger = logger
-        self._client_factory = WinrmClientFactory(logger)
+    def __init__(self):
+        self._client_factory = WinrmClientFactory()
 
     @defer.inlineCallbacks
     def do_collect(self, hostname, username, password, wqls):
@@ -55,7 +54,7 @@ if __name__ == '__main__':
     import logging
     from twisted.internet import reactor
     logging.basicConfig()
-    winrm = WinrmCollectClient(logging.getLogger())
+    winrm = WinrmCollectClient()
 
     @defer.inlineCallbacks
     def do_example_collect():
