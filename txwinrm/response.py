@@ -18,7 +18,7 @@ from xml import sax
 from twisted.internet import defer
 from twisted.internet.protocol import Protocol
 from twisted.web._newclient import ResponseFailed
-from . import contstants as c
+from . import constants as c
 
 log = logging.getLogger('zen.winrm')
 

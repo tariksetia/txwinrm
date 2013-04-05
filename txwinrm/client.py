@@ -17,7 +17,7 @@ from twisted.internet.error import TimeoutError
 from twisted.web.client import Agent
 from twisted.web.http_headers import Headers
 from . import response as response_module
-from . import contstants as c
+from . import constants as c
 
 
 class WinrmClient(object):
