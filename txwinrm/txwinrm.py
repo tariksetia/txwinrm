@@ -40,7 +40,7 @@ class ElementPrinter(object):
         self._properties = []
         self._demarc = '-' * 4
 
-    def new_instance(self):
+    def new_instance(self, localname):
         if self._properties:
             self._properties.append((self._demarc, ''))
 
@@ -63,7 +63,7 @@ class ProcessStatsAccumulator(object):
     def __init__(self):
         self.process_stats = []
 
-    def new_instance(self):
+    def new_instance(self, localname):
         self.process_stats.append({})
 
     def add_property(self, name, value):

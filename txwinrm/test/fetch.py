@@ -25,9 +25,9 @@ import logging
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol
 from ..client import WinrmClientFactory
+from .. import constants as c
 
-logging.basicConfig()
-logger = logging.getLogger()
+logging.basicConfig(level=logging.INFO)
 
 HOSTNAME = 'gilroy'
 USERNAME = 'Administrator'
@@ -43,7 +43,6 @@ CIM_CLASSES = [
     'Win32_IP4RouteTable',
     'Win32_NetworkAdapterConfiguration',
     'Win32_PerfRawData_Tcpip_NetworkInterface',
-    'Win32_CacheMemory',
     'Win32_Processor',
     'Win32_Process',
     'Win32_PerfRawData_PerfDisk_PhysicalDisk',
@@ -66,7 +65,7 @@ class SingleValueAccumulator(object):
     def __init__(self):
         self.value = None
 
-    def new_instance(self):
+    def new_instance(self, localname):
         pass
 
     def add_property(self, name, value):
@@ -75,14 +74,19 @@ class SingleValueAccumulator(object):
 
 class PropertiesAccumulator(object):
 
-    def __init__(self):
+    def __init__(self, cim_class):
+        self._cim_class = cim_class
         self.properties = set([])
 
-    def new_instance(self):
-        pass
+    def new_instance(self, localname):
+        # don't add properties for subclasses
+        self._record_properties = \
+            localname.lower() == self._cim_class.lower() \
+            or localname == c.WSM_XML_FRAGMENT
 
     def add_property(self, name, value):
-        self.properties.add(name)
+        if self._record_properties:
+            self.properties.add(name)
 
 
 class WriteXmlToFileProtocol(Protocol):
@@ -102,9 +106,10 @@ class WriteXmlToFileHandler(object):
     def __init__(self, dirname):
         self._dirname = dirname
         self.suffix = None
+        self.cim_class = None
 
-    def handle_response(self, response, resource_uri, cim_class, accumulator):
-        filename = '{0}_{1}.xml'.format(cim_class, self.suffix)
+    def handle_response(self, response, accumulator):
+        filename = '{0}_{1}.xml'.format(self.cim_class, self.suffix)
         f = open(os.path.join(self._dirname, filename), 'w+')
         reader = WriteXmlToFileProtocol(f)
         response.deliverBody(reader)
@@ -121,7 +126,7 @@ def get_subdirname(client):
 
 @defer.inlineCallbacks
 def fetch():
-    factory = WinrmClientFactory(logger)
+    factory = WinrmClientFactory()
     client = factory.create_winrm_client()
     subdirname = yield get_subdirname(client)
     basedir = os.path.dirname(os.path.abspath(__file__))
@@ -130,15 +135,16 @@ def fetch():
     handler = WriteXmlToFileHandler(dirname)
     write_client = factory.create_winrm_client_with_handler(handler)
     for cim_class in CIM_CLASSES:
+        handler.cim_class = cim_class
         wql = 'select * from {0}'.format(cim_class)
         handler.suffix = 'star'
         yield write_client.enumerate(HOSTNAME, USERNAME, PASSWORD, wql, None)
-        accumulator = PropertiesAccumulator()
+        accumulator = PropertiesAccumulator(cim_class)
         yield client.enumerate(HOSTNAME, USERNAME, PASSWORD, wql, accumulator)
         filename = '{0}.properties'.format(cim_class)
         with open(os.path.join(dirname, filename), 'w+') as f:
             for prop in accumulator.properties:
-                f.write(prop)
+                f.write(prop + '\n')
         explicit_wql = 'select {0} from {1}'.format(
             ','.join(accumulator.properties),
             cim_class)

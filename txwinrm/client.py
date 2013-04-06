@@ -75,7 +75,7 @@ class WinrmClient(object):
                     raise Unauthorized("unauthorized, check username and "
                                        "password.")
                 if response.code != 200:
-                    reader = ErrorReader(hostname, wql, log)
+                    reader = ErrorReader(hostname, wql)
                     response.deliverBody(reader)
                     yield reader.d
                     raise Exception("HTTP status" + str(response.code))

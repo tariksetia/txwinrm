@@ -112,39 +112,3 @@ redirect stdin to /dev/null if you want terse output.
 
 The '-d' option increases logging, printing out the XML for all requests and
 responses, along with the HTTP status code.
-
-
-Performance of XML Parsers
---------------------------
-
-Offers three XML parser implementations. Specify with the -p option.
-
-    $ time python -m txwinrm.txwinrm -p sax >/dev/null
-    Summary:
-      Connected to 3 of 3 hosts
-      Processed 14203 elements
-      Failed to process 0 responses
-      Peak virtual memory useage: 590724 kB
-    real    0m2.223s
-    user    0m0.851s
-    sys     0m0.128s
-
-    $ time python -m txwinrm.txwinrm -p etree >/dev/null
-    Summary:
-      Connected to 3 of 3 hosts
-      Processed 14203 elements
-      Failed to process 0 responses
-      Peak virtual memory useage: 590692 kB
-    real    0m3.104s
-    user    0m1.790s
-    sys     0m0.143s
-
-    $ time python -m txwinrm.txwinrm -p cetree >/dev/null
-    Summary:
-      Connected to 3 of 3 hosts
-      Processed 14203 elements
-      Failed to process 0 responses
-      Peak virtual memory useage: 588352 kB
-    real    0m2.148s
-    user    0m0.636s
-    sys     0m0.139s
