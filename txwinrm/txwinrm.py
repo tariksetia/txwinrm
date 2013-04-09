@@ -40,7 +40,7 @@ class ElementPrinter(object):
         self._properties = []
         self._demarc = '-' * 4
 
-    def new_instance(self, localname):
+    def new_instance(self):
         if self._properties:
             self._properties.append((self._demarc, ''))
 
@@ -63,7 +63,7 @@ class ProcessStatsAccumulator(object):
     def __init__(self):
         self.process_stats = []
 
-    def new_instance(self, localname):
+    def new_instance(self):
         self.process_stats.append({})
 
     def add_property(self, name, value):
@@ -139,8 +139,9 @@ def send_requests(client, config):
             global exit_status
             final_wmiprvse_stats = {}
             for hostname, (username, password) in config.hosts.iteritems():
-                final_wmiprvse_stats[hostname] = yield get_remote_process_stats(
-                    client, hostname, username, password)
+                final_wmiprvse_stats[hostname] = \
+                    yield get_remote_process_stats(client, hostname,
+                                                   username, password)
             print >>sys.stderr, '\nSummary:'
             print >>sys.stderr, '  Connected to', len(good_hosts), 'of', \
                                 len(config.hosts), 'hosts'
@@ -151,10 +152,12 @@ def send_requests(client, config):
                     failure_count += 1
             if failure_count:
                 exit_status = 1
-            print >>sys.stderr, '  Failed to process', failure_count, "responses"
+            print >>sys.stderr, '  Failed to process', failure_count,\
+                "responses"
             print >>sys.stderr, "  Peak virtual memory useage:", get_vmpeak()
             print >>sys.stderr, '  Remote CPU utilization:'
-            calculate_remote_cpu_util(initial_wmiprvse_stats, final_wmiprvse_stats)
+            calculate_remote_cpu_util(initial_wmiprvse_stats,
+                                      final_wmiprvse_stats)
         finally:
             reactor.stop()
 

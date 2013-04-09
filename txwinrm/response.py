@@ -23,18 +23,23 @@ from . import constants as c
 log = logging.getLogger('zen.winrm')
 
 
+def create_parser_and_factory(accumulator):
+    parser = sax.make_parser()
+    parser.setFeature(sax.handler.feature_namespaces, True)
+    text_buffer = TextBufferingContentHandler()
+    factory = EnvelopeHandlerFactory(text_buffer, accumulator)
+    content_handler = ChainingContentHandler([
+        text_buffer,
+        DispatchingContentHandler(factory)])
+    parser.setContentHandler(content_handler)
+    return parser, factory
+
+
 class SaxResponseHandler(object):
 
     @defer.inlineCallbacks
     def handle_response(self, response, accumulator):
-        parser = sax.make_parser()
-        parser.setFeature(sax.handler.feature_namespaces, True)
-        text_buffer = TextBufferingContentHandler()
-        factory = EnvelopeHandlerFactory(text_buffer, accumulator)
-        content_handler = ChainingContentHandler([
-            text_buffer,
-            DispatchingContentHandler(factory)])
-        parser.setContentHandler(content_handler)
+        parser, factory = create_parser_and_factory(accumulator)
         reader = ParserFeedingProtocol(parser)
         response.deliverBody(reader)
         yield reader.d
@@ -63,6 +68,21 @@ class TagComparer(object):
 def create_tag_comparer(name):
     uri, localname = name
     return TagComparer(uri, localname)
+
+
+class ChainingProtocol(Protocol):
+
+    def __init__(self, chain):
+        self._chain = chain
+        self.d = defer.DeferredList([p.d for p in chain])
+
+    def dataReceived(self, data):
+        for protocol in self._chain:
+            protocol.dataReceived(data)
+
+    def connectionLost(self, reason):
+        for protocol in self._chain:
+            protocol.connectionLost(reason)
 
 
 class ParserFeedingProtocol(Protocol):
@@ -228,7 +248,7 @@ class ItemsContentHandler(sax.handler.ContentHandler):
                             .format([t.localname for t in self._tag_stack],
                                     tag.localname))
         if len(self._tag_stack) == 1:
-            self._accumulator.new_instance(tag.localname)
+            self._accumulator.new_instance()
         elif len(self._tag_stack) == 2:
             if attrs.get((c.XML_NS_BUILTIN, c.BUILTIN_NIL), None) == 'true':
                 self._value = (None,)

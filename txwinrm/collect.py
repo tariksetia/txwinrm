@@ -23,7 +23,7 @@ class ResultsAccumulator(object):
     def __init__(self):
         self.results = []
 
-    def new_instance(self, localname):
+    def new_instance(self):
         self.results.append(Result())
 
     def add_property(self, name, value):
