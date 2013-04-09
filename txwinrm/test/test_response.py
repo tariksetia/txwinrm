@@ -34,7 +34,11 @@ INCOMPARABLE_PROPERTIES = dict(
         'VirtualSize',
         'QuotaPagedPoolUsage',
         'ThreadCount',
-        'QuotaNonPagedPoolUsage'],
+        'QuotaNonPagedPoolUsage',
+        'WriteTransferCount',
+        'WriteOperationCount',
+        'ReadOperationCount',
+        'ReadTransferCount'],
     Win32_Processor=[
         'LoadPercentage'],
     Win32_IP4RouteTable=[
@@ -87,7 +91,11 @@ INCOMPARABLE_PROPERTIES = dict(
         'PageFileBytes',
         'PrivateBytes',
         'VirtualBytesPeak',
-        'ElapsedTime'],
+        'ElapsedTime',
+        'IOWriteBytesPersec',
+        'IOWriteOperationsPersec',
+        'IODataBytesPersec',
+        'IODataOperationsPersec'],
     Win32_PerfRawData_Tcpip_NetworkInterface=[
         'BytesReceivedPersec',
         'BytesSentPersec',

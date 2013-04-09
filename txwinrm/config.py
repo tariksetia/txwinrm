@@ -10,7 +10,8 @@
 hosts = dict(
     gilroy=('Administrator', 'Z3n0ss'),
     cupertino=('Administrator', 'Z3n0ss'),
-    campbell=('Administrator', 'Z3n0ss')
+    campbell=('Administrator', 'Z3n0ss'),
+    milpitas=('Administrator', 'Z3n0ss')
 )
 
 wqls = [
