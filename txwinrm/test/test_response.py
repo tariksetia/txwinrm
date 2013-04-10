@@ -95,7 +95,8 @@ INCOMPARABLE_PROPERTIES = dict(
         'IOWriteBytesPersec',
         'IOWriteOperationsPersec',
         'IODataBytesPersec',
-        'IODataOperationsPersec'],
+        'IODataOperationsPersec',
+        'ThreadCount'],
     Win32_PerfRawData_Tcpip_NetworkInterface=[
         'BytesReceivedPersec',
         'BytesSentPersec',

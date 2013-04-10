@@ -30,7 +30,7 @@ from ..response import create_parser_and_factory, ChainingProtocol, \
 
 logging.basicConfig(level=logging.INFO)
 
-HOSTNAME = 'milpitas'
+HOSTNAME = 'oakland'
 USERNAME = 'Administrator'
 PASSWORD = 'Z3n0ss'
 
@@ -48,7 +48,7 @@ CIM_CLASSES = [
     'Win32_Process',
     'Win32_PerfRawData_PerfDisk_PhysicalDisk',
     'Win32_PerfRawData_PerfProc_Process',
-    # 'Win32_Product',
+    'Win32_Product',
 ]
 
 
