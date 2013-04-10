@@ -272,12 +272,14 @@ class ItemsContentHandler(sax.handler.ContentHandler):
                 value = self._value[0]
             self._accumulator.add_property(tag.localname, value)
             self._value = None
-        elif len(self._tag_stack) == 1:
-            if tag.matches(c.XML_NS_CIM_SCHEMA, "datetime"):
+        elif len(self._tag_stack) == 3:
+            if tag.matches(c.XML_NS_CIM_SCHEMA, "Datetime") \
+                    or tag.matches(None, "Datetime"):
                 self._value = (get_datetime(self._text_buffer.text),)
 
 
 def get_datetime(text):
+    text = text.strip()
     if '.' in text:
         format = "%Y-%m-%dT%H:%M:%S.%fZ"
     else:

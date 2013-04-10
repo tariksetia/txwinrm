@@ -14,8 +14,11 @@ This testing requires real Windows machines that are setup manually.
 import os
 import re
 import unittest
+from xml import sax
 from pprint import pformat
-from ..response import create_parser_and_factory
+from datetime import datetime
+from ..response import create_parser_and_factory, get_datetime, \
+    ItemsContentHandler, ChainingContentHandler, TextBufferingContentHandler
 
 MAX_RESPONSE_FILES = 999
 
@@ -38,7 +41,8 @@ INCOMPARABLE_PROPERTIES = dict(
         'WriteTransferCount',
         'WriteOperationCount',
         'ReadOperationCount',
-        'ReadTransferCount'],
+        'ReadTransferCount',
+        'PeakPageFileUsage'],
     Win32_Processor=[
         'LoadPercentage'],
     Win32_IP4RouteTable=[
@@ -70,7 +74,8 @@ INCOMPARABLE_PROPERTIES = dict(
         'AvgDisksecPerWrite_Base'],
     Win32_OperatingSystem=[
         'FreePhysicalMemory',
-        'FreeVirtualMemory'],
+        'FreeVirtualMemory',
+        'LocalDateTime'],
     Win32_PerfRawData_PerfProc_Process=[
         'PercentPrivilegedTime',
         'PercentProcessorTime',
@@ -257,6 +262,95 @@ def get_data_by_os_version():
             data['all'] = chop_none_terminated_list(data['all'])
 
     return data_by_os_version
+
+CIM_CLASS_FMT = """
+<w:Items xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd"
+xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2/{cim_class}">
+<p:{cim_class}>
+{properties}
+</p:{cim_class}>
+</w:Items>
+"""
+
+XML_FRAGMENT_FMT = """
+<n:Items xmlns:n="http://schemas.xmlsoap.org/ws/2004/09/enumeration"
+         xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+<w:XmlFragment>
+{properties}
+</w:XmlFragment>
+</n:Items>
+"""
+
+DATETIME_CIM_CLASS = """
+<p:InstallDate xmlns:cim="http://schemas.dmtf.org/wbem/wscim/1/common">
+<cim:Datetime>2013-03-09T03:06:25Z</cim:Datetime>
+</p:InstallDate>
+"""
+
+DATETIME_XML_FRAGMENT = """
+<CreationDate>
+<Datetime>2013-04-09T15:42:20.4124Z</Datetime>
+</CreationDate>
+"""
+
+NIL = '<p:InstallDate xsi:nil="true"/>'
+
+EMPTY = """
+"""
+
+
+class TestDataType(unittest.TestCase):
+
+    def setUp(self):
+        pass
+
+    def tearDown(self):
+        pass
+
+    def test_datetime(self):
+        data = [("2013-04-09T15:42:20.4124Z",
+                 datetime(2013, 4, 9, 15, 42, 20, 412400)),
+                ("2013-04-09T15:42:20Z",
+                 datetime(2013, 4, 9, 15, 42, 20)),
+                ]
+        for date_str, expected in data:
+            actual = get_datetime(date_str)
+            self.assertEqual(actual, expected)
+
+    def test_items_with_datetime(self):
+        datetime_1 = CIM_CLASS_FMT.format(cim_class='Win32_OperatingSystem',
+                                          properties=DATETIME_CIM_CLASS)
+        datetime_2 = XML_FRAGMENT_FMT.format(properties=DATETIME_XML_FRAGMENT)
+        data = [(datetime_1, "InstallDate",
+                 datetime(2013, 3, 9, 03, 06, 25)),
+                (datetime_2, "CreationDate",
+                 datetime(2013, 4, 9, 15, 42, 20, 412400))]
+        for xml_str, prop, expected in data:
+            parser = sax.make_parser()
+            parser.setFeature(sax.handler.feature_namespaces, True)
+            text_buffer = TextBufferingContentHandler()
+            accumulator = MyTestAccumulator('foo', 'bar')
+            items_handler = ItemsContentHandler(text_buffer, accumulator)
+            content_handler = ChainingContentHandler(
+                [text_buffer, items_handler])
+            parser.setContentHandler(content_handler)
+            parser.feed(xml_str)
+            self.assertEqual(len(accumulator.results), 1)
+            actual = getattr(accumulator.results[0], prop)
+            self.assertEqual(actual, expected)
+
+    def test_nil(self):
+        pass
+
+    def test_empty(self):
+        pass
+
+    def test_subclass(self):
+        pass
+
+    def test_optional(self):
+        pass
+
 
 if __name__ == '__main__':
     unittest.main()
