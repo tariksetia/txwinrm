@@ -35,9 +35,10 @@ def get_vmpeak():
 
 class ElementPrinter(object):
 
-    def __init__(self, hostname, wql):
+    def __init__(self, hostname, wql, include_header):
         self._hostname = hostname
         self._wql = wql
+        self._include_header = include_header
         self._properties = []
         self._demarc = '-' * 4
 
@@ -51,12 +52,16 @@ class ElementPrinter(object):
         self._properties.append((name, value))
 
     def print_elements_with_text(self, result):
-        print '\n', self._hostname, "==>", self._wql
+        if self._include_header:
+            print '\n', self._hostname, "==>", self._wql
+            indent = '  '
+        else:
+            indent = ''
         for tag, text in self._properties:
             if tag == self._demarc:
-                print ' ', self._demarc
+                print '{0}{1}'.format(indent, self._demarc)
             else:
-                print '  {0} = {1}'.format(tag, text)
+                print '{0}{1} = {2}'.format(indent, tag, text)
 
 
 class ProcessStatsAccumulator(object):
@@ -94,8 +99,9 @@ def calculate_remote_cpu_util(initial_stats, final_stats):
                 if pid == final_stats_dict["IDProcess"]:
                     break
             else:
-                raise Exception("Could not find final process stats for "
-                                + hostname + " " + pid)
+                print >>sys.stderr, "WARNING: Could not find final process " \
+                                    "stats for", hostname, pid
+                continue
             x1 = float(final_stats_dict['PercentProcessorTime'])
             x0 = float(initial_stats_dict['PercentProcessorTime'])
             y1 = float(final_stats_dict['Timestamp_Sys100NS'])
@@ -108,8 +114,7 @@ def calculate_remote_cpu_util(initial_stats, final_stats):
 
 
 @defer.inlineCallbacks
-def send_requests(client, config):
-    global exit_status
+def get_initial_wmiprvse_stats(client, config):
     initial_wmiprvse_stats = {}
     good_hosts = []
     for hostname, (username, password) in config.hosts.iteritems():
@@ -121,6 +126,45 @@ def send_requests(client, config):
             continue
         except TimeoutError:
             continue
+    defer.returnValue((initial_wmiprvse_stats, good_hosts))
+
+
+@defer.inlineCallbacks
+def print_summary(results, client, config, initial_wmiprvse_stats, good_hosts):
+    global exit_status
+    final_wmiprvse_stats = {}
+    for hostname, username, password in good_hosts:
+        final_wmiprvse_stats[hostname] = \
+            yield get_remote_process_stats(client, hostname,
+                                           username, password)
+    print >>sys.stderr, '\nSummary:'
+    print >>sys.stderr, '  Connected to', len(good_hosts), 'of', \
+                        len(config.hosts), 'hosts'
+    print >>sys.stderr, "  Processed", GLOBAL_ELEMENT_COUNT, "elements"
+    failure_count = 0
+    for success, result in results:
+        if not success:
+            failure_count += 1
+    if failure_count:
+        exit_status = 1
+    print >>sys.stderr, '  Failed to process', failure_count,\
+        "responses"
+    print >>sys.stderr, "  Peak virtual memory useage:", get_vmpeak()
+    print >>sys.stderr, '  Remote CPU utilization:'
+    calculate_remote_cpu_util(initial_wmiprvse_stats,
+                              final_wmiprvse_stats)
+
+
+@defer.inlineCallbacks
+def send_requests(client, config, do_summary):
+    global exit_status
+    if do_summary:
+        initial_wmiprvse_stats, good_hosts = \
+            yield get_initial_wmiprvse_stats(client, config)
+    else:
+        initial_wmiprvse_stats = None
+        hostname, (username, password) = config.hosts.items()[0]
+        good_hosts = [(hostname, username, password)]
     if not good_hosts:
         exit_status = 1
         reactor.stop()
@@ -128,7 +172,7 @@ def send_requests(client, config):
     ds = []
     for hostname, username, password in good_hosts:
         for wql in config.wqls:
-            printer = ElementPrinter(hostname, wql)
+            printer = ElementPrinter(hostname, wql, do_summary)
             d = client.enumerate(hostname, username, password, wql, printer)
             d.addCallback(printer.print_elements_with_text)
             ds.append(d)
@@ -137,28 +181,9 @@ def send_requests(client, config):
     @defer.inlineCallbacks
     def dl_callback(results):
         try:
-            global exit_status
-            final_wmiprvse_stats = {}
-            for hostname, (username, password) in config.hosts.iteritems():
-                final_wmiprvse_stats[hostname] = \
-                    yield get_remote_process_stats(client, hostname,
-                                                   username, password)
-            print >>sys.stderr, '\nSummary:'
-            print >>sys.stderr, '  Connected to', len(good_hosts), 'of', \
-                                len(config.hosts), 'hosts'
-            print >>sys.stderr, "  Processed", GLOBAL_ELEMENT_COUNT, "elements"
-            failure_count = 0
-            for success, result in results:
-                if not success:
-                    failure_count += 1
-            if failure_count:
-                exit_status = 1
-            print >>sys.stderr, '  Failed to process', failure_count,\
-                "responses"
-            print >>sys.stderr, "  Peak virtual memory useage:", get_vmpeak()
-            print >>sys.stderr, '  Remote CPU utilization:'
-            calculate_remote_cpu_util(initial_wmiprvse_stats,
-                                      final_wmiprvse_stats)
+            if do_summary:
+                yield print_summary(results, client, config,
+                                    initial_wmiprvse_stats, good_hosts)
         finally:
             reactor.stop()
 
@@ -214,13 +239,15 @@ def main():
     client = factory.create_winrm_client()
     if args.config:
         config = parse_config_file(args.config)
+        do_summary = True
     elif args.remote and args.username and args.password and args.filter:
         config = adapt_args_to_config(args)
+        do_summary = False
     else:
         print >>sys.stderr, "ERROR: You must specify a config file with -c " \
                             "or specify remote, username, password and filter"
         sys.exit(1)
-    reactor.callWhenRunning(send_requests, client, config)
+    reactor.callWhenRunning(send_requests, client, config, do_summary)
     reactor.run()
     sys.exit(exit_status)
 
