@@ -371,12 +371,6 @@ class TestDataType(unittest.TestCase):
         data = [(empty_1, "Version", ""), (empty_2, "Version", "")]
         self._do_test_of_prop_parsing(data)
 
-    def test_subclass(self):
-        pass
-
-    def test_optional(self):
-        pass
-
 
 if __name__ == '__main__':
     unittest.main()
