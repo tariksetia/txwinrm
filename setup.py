@@ -12,11 +12,12 @@
 from distutils.core import setup
 
 setup(name='txwinrm',
-      version='1.0',
+      version='0.1',
       description='Asynchronous Python WinRM client',
       author='Zenoss',
       author_email='bedwards@zenoss.com',
       url='https://github.com/zenoss/txwinrm',
       packages=['txwinrm', 'txwinrm.request'],
+      package_data={'txwinrm.request': ['*.xml']},
       scripts=['scripts/winrm']
       )

@@ -14,6 +14,7 @@ Use twisted web client to enumerate/pull WQL query.
 import logging
 import sys
 from argparse import ArgumentParser
+from ConfigParser import RawConfigParser
 from twisted.internet import reactor, defer
 from twisted.internet.error import TimeoutError
 from . import client as client_module
@@ -164,9 +165,43 @@ def send_requests(client, config):
     dl.addCallback(dl_callback)
 
 
+class Config(object):
+    pass
+
+
+def parse_config_file(filename):
+    parser = RawConfigParser(allow_no_value=True)
+    parser.read(filename)
+    creds = {}
+    index = dict(hostname=0, password=1)
+    for key, value in parser.items('credentials'):
+        k1, k2 = key.split('.')
+        if k1 not in creds:
+            creds[k1] = [None, None]
+        creds[k1][index[k2]] = value
+    config = Config()
+    config.hosts = {}
+    for hostname, cred_key in parser.items('targets'):
+        config.hosts[hostname] = (creds[cred_key])
+    config.wqls = parser.options('wqls')
+    return config
+
+
+def adapt_args_to_config(args):
+    config = Config()
+    config.hosts = {args.remote: (args.username, args.password)}
+    config.wqls = [args.filter]
+    return config
+
+
 def parse_args():
     parser = ArgumentParser()
     parser.add_argument("--debug", "-d", action="store_true")
+    parser.add_argument("--config", "-c")
+    parser.add_argument("--remote", "-r")
+    parser.add_argument("--username", "-u")
+    parser.add_argument("--password", "-p")
+    parser.add_argument("--filter", "-f")
     return parser.parse_args()
 
 
@@ -177,7 +212,14 @@ def main():
         defer.setDebugging(True)
     factory = client_module.WinrmClientFactory()
     client = factory.create_winrm_client()
-    from . import config
+    if args.config:
+        config = parse_config_file(args.config)
+    elif args.remote and args.username and args.password and args.filter:
+        config = adapt_args_to_config(args)
+    else:
+        print >>sys.stderr, "ERROR: You must specify a config file with -c " \
+                            "or specify remote, username, password and filter"
+        sys.exit(1)
     reactor.callWhenRunning(send_requests, client, config)
     reactor.run()
     sys.exit(exit_status)

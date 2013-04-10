@@ -15,19 +15,18 @@ Current Feature Support
 Future Feature Support
 ----------------------
 
-* HTTPS
-* Kerberos authentication (domain accounts)
-* NTLM authentication (local accounts)
-* Subscribe to the Windows Event Log
 * WinRS
 * PerfMon over WinRS
+* Subscribe to the Windows Event Log
+* Kerberos authentication (domain accounts)
+* NTLM authentication (local accounts)
+* HTTPS
 
 
 Installation
 ------------
 
-You can run this application in place after checking it out from github, or
-install it in your Python site libraries with:
+Install this application into your Python site libraries with:
 
     $ python setup.py install
 
@@ -53,12 +52,20 @@ Command Prompt as Administrator and execute the following commands
 Basic Useage
 ------------
 
-    $ vim path/to/txwinrm/config.py
-    $ python -m txwinrm.txwinrm
+You can pass a single host and query via the command line...
 
-This will send WinRM enumerate requests to the hosts listed in
-txwinrm/config.py. It will send a request for each WQL query listed in that
-file. The output will look like
+    $ winrm -r host -u user -p passwd -f "select * from Win32_NetworkAdapter"
+
+
+..., or create an ini-style config file and hit multiple targets with multiple
+queries. Example config is at examples/config.ini
+
+    $ winrm -c path/to/config.ini
+
+
+This will send WinRM enumerate requests to the hosts listed in config.ini. It
+will send a request for each WQL query listed in that file. The output will
+look like
 
     <hostname> ==> <WQL query>
         <XML namespace hint>.<tag> <value>
@@ -83,11 +90,12 @@ Here is an example...
       Name = ALG
     ...
 
+
 A summary of the number of failures if any and number of XML elements processed
 appears at the end. The summary and any errors are written to stderr, so
 redirect stdin to /dev/null if you want terse output.
 
-    $ python -m txwinrm.txwinrm >/dev/null
+    $ winrm -c path/to/config.ini >/dev/null
 
     Summary:
       Connected to 3 of 3 hosts
