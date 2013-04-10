@@ -141,13 +141,19 @@ class TextBufferingContentHandler(sax.handler.ContentHandler):
     def text(self):
         return self._text
 
+    def startElementNS(self, name, qname, attrs):
+        self._reset_truncate()
+
     def endElementNS(self, name, qname):
         self._text = self._buffer.getvalue()
-        self._buffer.reset()
-        self._buffer.truncate()
+        self._reset_truncate()
 
     def characters(self, content):
         self._buffer.write(content)
+
+    def _reset_truncate(self):
+        self._buffer.reset()
+        self._buffer.truncate()
 
 
 class DispatchingContentHandler(sax.handler.ContentHandler):

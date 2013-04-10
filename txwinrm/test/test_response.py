@@ -293,9 +293,21 @@ DATETIME_XML_FRAGMENT = """
 </CreationDate>
 """
 
-NIL = '<p:InstallDate xsi:nil="true"/>'
+NIL_CIM_CLASS = """
+<p:Caption xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+           xsi:nil="true"/>
+"""
 
-EMPTY = """
+NIL_XML_FRAGMENT = """
+<Access xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true"/>
+"""
+
+EMPTY_CIM_CLASS = """
+<p:Version></p:Version>
+"""
+
+EMPTY_XML_FRAGMENT = """
+<Version></Version>
 """
 
 
@@ -317,14 +329,7 @@ class TestDataType(unittest.TestCase):
             actual = get_datetime(date_str)
             self.assertEqual(actual, expected)
 
-    def test_items_with_datetime(self):
-        datetime_1 = CIM_CLASS_FMT.format(cim_class='Win32_OperatingSystem',
-                                          properties=DATETIME_CIM_CLASS)
-        datetime_2 = XML_FRAGMENT_FMT.format(properties=DATETIME_XML_FRAGMENT)
-        data = [(datetime_1, "InstallDate",
-                 datetime(2013, 3, 9, 03, 06, 25)),
-                (datetime_2, "CreationDate",
-                 datetime(2013, 4, 9, 15, 42, 20, 412400))]
+    def _do_test_of_prop_parsing(self, data):
         for xml_str, prop, expected in data:
             parser = sax.make_parser()
             parser.setFeature(sax.handler.feature_namespaces, True)
@@ -339,11 +344,32 @@ class TestDataType(unittest.TestCase):
             actual = getattr(accumulator.results[0], prop)
             self.assertEqual(actual, expected)
 
+    def test_items_with_datetime(self):
+        datetime_1 = CIM_CLASS_FMT.format(cim_class='Win32_OperatingSystem',
+                                          properties=DATETIME_CIM_CLASS)
+        datetime_2 = XML_FRAGMENT_FMT.format(properties=DATETIME_XML_FRAGMENT)
+        data = [(datetime_1, "InstallDate",
+                 datetime(2013, 3, 9, 03, 06, 25)),
+                (datetime_2, "CreationDate",
+                 datetime(2013, 4, 9, 15, 42, 20, 412400))]
+        self._do_test_of_prop_parsing(data)
+
     def test_nil(self):
-        pass
+        nil_1 = CIM_CLASS_FMT.format(
+            cim_class="Win32_PerfRawData_Tcpip_NetworkInterface",
+            properties=NIL_CIM_CLASS)
+        nil_2 = XML_FRAGMENT_FMT.format(properties=NIL_XML_FRAGMENT)
+        data = [(nil_1, "Caption", None),
+                (nil_2, "Access", None)]
+        self._do_test_of_prop_parsing(data)
 
     def test_empty(self):
-        pass
+        empty_1 = CIM_CLASS_FMT.format(
+            cim_class="Win32_Processor",
+            properties=EMPTY_CIM_CLASS)
+        empty_2 = XML_FRAGMENT_FMT.format(properties=EMPTY_XML_FRAGMENT)
+        data = [(empty_1, "Version", ""), (empty_2, "Version", "")]
+        self._do_test_of_prop_parsing(data)
 
     def test_subclass(self):
         pass
@@ -354,3 +380,5 @@ class TestDataType(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+    # suite = unittest.TestLoader().loadTestsFromTestCase(TestDataType)
+    # unittest.TextTestRunner().run(suite)
