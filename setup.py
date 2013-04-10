@@ -12,7 +12,7 @@
 from distutils.core import setup
 
 setup(name='txwinrm',
-      version='0.2',
+      version='0.3',
       description='Asynchronous Python WinRM client',
       author='Zenoss',
       author_email='bedwards@zenoss.com',
