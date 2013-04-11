@@ -153,8 +153,14 @@ class TextBufferingContentHandler(sax.handler.ContentHandler):
             self._buffer.write(content)
         except UnicodeEncodeError:
             from sys import stderr
+            from os import environ
             print >>stderr, "TextBufferingContentHandler characters ---"
-            print >>stderr, content
+            print >>stderr, "$LANG:", environ.get('LANG')
+            print >>stderr, "$LC_CTYPE:", environ.get('LC_CTYPE')
+            print >>stderr, "ascii ---"
+            print >>stderr, content.encode('ascii', 'ignore')
+            print >>stderr, "utf8 ---"
+            print >>stderr, content.encode('utf8', 'ignore')
             print >>stderr, "---"
             raise
 
