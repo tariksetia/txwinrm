@@ -149,7 +149,13 @@ class TextBufferingContentHandler(sax.handler.ContentHandler):
         self._reset_truncate()
 
     def characters(self, content):
-        self._buffer.write(content)
+        try:
+            self._buffer.write(content)
+        except UnicodeEncodeError:
+            print "TextBufferingContentHandler characters ---"
+            print content
+            print "---"
+            raise
 
     def _reset_truncate(self):
         self._buffer.reset()
