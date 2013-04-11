@@ -42,8 +42,7 @@ class WinrmClient(object):
         self._unauthorized_hosts = []
         self._timedout_hosts = []
 
-    @defer.inlineCallbacks
-    def enumerate(self, hostname, username, password, wql, accumulator):
+    def _get_url_and_headers(self, hostname, username, password):
         if hostname in self._unauthorized_hosts:
             if log.isEnabledFor(logging.DEBUG):
                 log.debug(hostname + " previously returned "
@@ -61,6 +60,11 @@ class WinrmClient(object):
         headers = Headers(
             {'Content-Type': ['application/soap+xml;charset=UTF-8'],
              'Authorization': [auth]})
+        return url, headers
+
+    @defer.inlineCallbacks
+    def enumerate(self, hostname, username, password, wql, accumulator):
+        url, headers = self._get_url_and_headers(hostname, username, password)
         request_type = 'enumerate'
         resource_uri_prefix = c.WMICIMV2
         enumeration_context = None
@@ -106,6 +110,10 @@ class WinrmClient(object):
         except Exception, e:
             log.error('{0} {1}'.format(hostname, e))
             raise
+
+    @defer.inlineCallbacks
+    def typeperf(self, hostname, username, password, counter):
+        url, headers = self._get_url_and_headers(hostname, username, password)
 
 
 class WinrmClientFactory(object):
