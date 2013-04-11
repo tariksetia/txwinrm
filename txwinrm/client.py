@@ -30,7 +30,6 @@ def get_request_template(name):
     request_fmt_filename = os.path.join(basedir, 'request', name + '.xml')
     with open(request_fmt_filename) as f:
         raw_request_template = f.read()
-    return raw_request_template
     return XML_WHITESPACE_PATTERN.sub('><', raw_request_template).strip()
 
 
