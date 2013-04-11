@@ -8,6 +8,7 @@
 ##############################################################################
 
 import os
+import re
 import base64
 import logging
 import httplib
@@ -20,13 +21,25 @@ from .response import SaxResponseHandler
 from . import constants as c
 
 log = logging.getLogger('zen.winrm')
+MAX_REQUESTS_PER_ENUMERATION = 9999
+XML_WHITESPACE_PATTERN = re.compile(r'>\s+<')
+
+
+def get_request_template(name):
+    basedir = os.path.dirname(os.path.abspath(__file__))
+    request_fmt_filename = os.path.join(basedir, 'request', name + '.xml')
+    with open(request_fmt_filename) as f:
+        raw_request_template = f.read()
+    return raw_request_template
+    return XML_WHITESPACE_PATTERN.sub('><', raw_request_template).strip()
 
 
 class WinrmClient(object):
 
-    def __init__(self, agent, handler):
+    def __init__(self, agent, handler, request_templates):
         self._agent = agent
         self._handler = handler
+        self._request_templates = request_templates
         self._unauthorized_hosts = []
         self._timedout_hosts = []
 
@@ -49,13 +62,12 @@ class WinrmClient(object):
         headers = Headers(
             {'Content-Type': ['application/soap+xml;charset=UTF-8'],
              'Authorization': [auth]})
-        request_fmt_filename = get_request_template('enumerate')
+        request_type = 'enumerate'
         resource_uri_prefix = c.WMICIMV2
         enumeration_context = None
         try:
-            while True:
-                with open(request_fmt_filename) as f:
-                    request_fmt = f.read()
+            for i in xrange(MAX_REQUESTS_PER_ENUMERATION):
+                request_fmt = self._request_templates[request_type]
                 request = request_fmt.format(
                     resource_uri=resource_uri_prefix + '/*',
                     wql=wql,
@@ -83,7 +95,9 @@ class WinrmClient(object):
                     response, accumulator)
                 if not enumeration_context:
                     break
-                request_fmt_filename = get_request_template('pull')
+                request_type = 'pull'
+            else:
+                raise Exception("Reached max requests per enumeration.")
         except TimeoutError, e:
             if hostname in self._timedout_hosts:
                 return
@@ -98,6 +112,8 @@ class WinrmClient(object):
 class WinrmClientFactory(object):
 
     agent = None
+    request_templates = dict(enumerate=get_request_template('enumerate'),
+                             pull=get_request_template('pull'))
 
     @classmethod
     def _get_or_create_agent(cls):
@@ -123,7 +139,7 @@ class WinrmClientFactory(object):
 
     def create_winrm_client_with_handler(self, handler):
         agent = self._get_or_create_agent()
-        return WinrmClient(agent, handler)
+        return WinrmClient(agent, handler, self.request_templates)
 
 
 class ErrorReader(Protocol):
@@ -160,8 +176,3 @@ class StringProducer(object):
 
 class Unauthorized(Exception):
     pass
-
-
-def get_request_template(name):
-    basedir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(basedir, 'request', name + '.xml')
