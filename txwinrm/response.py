@@ -152,9 +152,10 @@ class TextBufferingContentHandler(sax.handler.ContentHandler):
         try:
             self._buffer.write(content)
         except UnicodeEncodeError:
-            print "TextBufferingContentHandler characters ---"
-            print content
-            print "---"
+            from sys import stderr
+            print >>stderr, "TextBufferingContentHandler characters ---"
+            print >>stderr, content
+            print >>stderr, "---"
             raise
 
     def _reset_truncate(self):
