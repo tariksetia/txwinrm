@@ -149,20 +149,7 @@ class TextBufferingContentHandler(sax.handler.ContentHandler):
         self._reset_truncate()
 
     def characters(self, content):
-        try:
-            self._buffer.write(content)
-        except UnicodeEncodeError:
-            from sys import stderr
-            from os import environ
-            print >>stderr, "TextBufferingContentHandler characters ---"
-            print >>stderr, "$LANG:", environ.get('LANG')
-            print >>stderr, "$LC_CTYPE:", environ.get('LC_CTYPE')
-            print >>stderr, "ascii ---"
-            print >>stderr, content.encode('ascii', 'ignore')
-            print >>stderr, "utf8 ---"
-            print >>stderr, content.encode('utf8', 'ignore')
-            print >>stderr, "---"
-            raise
+        self._buffer.write(content.encode('utf8', 'ignore').strip())
 
     def _reset_truncate(self):
         self._buffer.reset()
@@ -298,7 +285,6 @@ class ItemsContentHandler(sax.handler.ContentHandler):
 
 
 def get_datetime(text):
-    text = text.strip()
     if '.' in text:
         format = "%Y-%m-%dT%H:%M:%S.%fZ"
     else:
