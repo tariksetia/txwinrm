@@ -68,12 +68,13 @@ will send a request for each WQL query listed in that file. The output will
 look like
 
     <hostname> ==> <WQL query>
-        <XML namespace hint>.<tag> <value>
+        <property-name> = <value>
         ...
-        -------------------------- ---------------------------
-        <XML namespace hint>.<tag> <value> (for next instance)
+        ---- (indicates start of next item)
+        <property-name> = <value>
         ...
     ...
+
 
 Here is an example...
 

@@ -42,7 +42,7 @@ class ElementPrinter(object):
         self._properties = []
         self._demarc = '-' * 4
 
-    def new_instance(self):
+    def new_item(self):
         if self._properties:
             self._properties.append((self._demarc, ''))
 
@@ -51,7 +51,7 @@ class ElementPrinter(object):
         GLOBAL_ELEMENT_COUNT += 1
         self._properties.append((name, value))
 
-    def print_elements_with_text(self, result):
+    def print_elements_with_text(self, item):
         if self._include_header:
             print '\n', self._hostname, "==>", self._wql
             indent = '  '
@@ -69,7 +69,7 @@ class ProcessStatsAccumulator(object):
     def __init__(self):
         self.process_stats = []
 
-    def new_instance(self):
+    def new_item(self):
         self.process_stats.append({})
 
     def add_property(self, name, value):
@@ -130,7 +130,7 @@ def get_initial_wmiprvse_stats(client, config):
 
 
 @defer.inlineCallbacks
-def print_summary(results, client, config, initial_wmiprvse_stats, good_hosts):
+def print_summary(items, client, config, initial_wmiprvse_stats, good_hosts):
     global exit_status
     final_wmiprvse_stats = {}
     for hostname, username, password in good_hosts:
@@ -142,7 +142,7 @@ def print_summary(results, client, config, initial_wmiprvse_stats, good_hosts):
                         len(config.hosts), 'hosts'
     print >>sys.stderr, "  Processed", GLOBAL_ELEMENT_COUNT, "elements"
     failure_count = 0
-    for success, result in results:
+    for success, item in items:
         if not success:
             failure_count += 1
     if failure_count:
@@ -179,10 +179,10 @@ def send_requests(client, config, do_summary):
     dl = defer.DeferredList(ds, consumeErrors=True)
 
     @defer.inlineCallbacks
-    def dl_callback(results):
+    def dl_callback(items):
         try:
             if do_summary:
-                yield print_summary(results, client, config,
+                yield print_summary(items, client, config,
                                     initial_wmiprvse_stats, good_hosts)
         finally:
             reactor.stop()

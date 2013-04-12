@@ -64,6 +64,20 @@ class WinrmClient(object):
 
     @defer.inlineCallbacks
     def enumerate(self, hostname, username, password, wql, accumulator):
+        """
+        Runs a remote WQL query. The accumulator parameter adheres to the
+        following interface:
+            new_item()
+            add_property(name, value)
+
+        new_item() is called each time a new item is recognized in the
+        enumerate and pull responses. add_property(name, value) is called with
+        each property. All properties added between calls to new_item
+        belong to a single item. It is an illegal state for add_property to
+        be called before the first call to new_item. It is an illegal state
+        for add_property to be called with the same name within the same
+        item.
+        """
         url, headers = self._get_url_and_headers(hostname, username, password)
         request_type = 'enumerate'
         resource_uri_prefix = c.WMICIMV2
@@ -112,7 +126,16 @@ class WinrmClient(object):
             raise
 
     @defer.inlineCallbacks
-    def typeperf(self, hostname, username, password, counter):
+    def run_commands(self, hostname, username, password, commands):
+        """
+        Run commands in a remote shell like the winrs application on Windows.
+        Accepts multiple commands. Returns a dictionary with the following
+        structure:
+            {<command>: dict(stdout=[<stripped-line>, ...],
+                             stdin=[<stripped-line>, ...],
+                             exit_code=<int>),
+             ...}
+        """
         url, headers = self._get_url_and_headers(hostname, username, password)
 
 

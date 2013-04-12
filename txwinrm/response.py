@@ -254,7 +254,7 @@ class ItemsContentHandler(sax.handler.ContentHandler):
                             .format([t.localname for t in self._tag_stack],
                                     tag.localname))
         if len(self._tag_stack) == 1:
-            self._accumulator.new_instance()
+            self._accumulator.new_item()
         elif len(self._tag_stack) == 2:
             if attrs.get((c.XML_NS_BUILTIN, c.BUILTIN_NIL), None) == 'true':
                 self._value = (None,)

@@ -66,7 +66,7 @@ class SingleValueAccumulator(object):
     def __init__(self):
         self.value = None
 
-    def new_instance(self):
+    def new_item(self):
         pass
 
     def add_property(self, name, value):
@@ -76,25 +76,25 @@ class SingleValueAccumulator(object):
 class PropertiesAccumulator(object):
 
     def __init__(self):
-        self._instance_props = []
+        self._item_props = []
 
     @property
     def properties(self):
-        required_props = self._instance_props[0]
-        for instance_props in self._instance_props[1:]:
-            required_props &= instance_props
+        required_props = self._item_props[0]
+        for item_props in self._item_props[1:]:
+            required_props &= item_props
         return required_props
 
-    def new_instance(self):
-        self._instance_props.append(set())
+    def new_item(self):
+        self._item_props.append(set())
 
     def add_property(self, name, value):
-        self._instance_props[-1].add(name)
+        self._item_props[-1].add(name)
 
 
 class DoNothingAccumulator(object):
 
-    def new_instance(self):
+    def new_item(self):
         pass
 
     def add_property(self, name, value):

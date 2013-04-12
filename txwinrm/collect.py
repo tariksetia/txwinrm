@@ -12,22 +12,22 @@ from twisted.internet import defer
 from .client import WinrmClientFactory
 
 
-class Result(object):
+class Item(object):
 
     def __repr__(self):
         return '\n' + pformat(vars(self), indent=4)
 
 
-class ResultsAccumulator(object):
+class ItemsAccumulator(object):
 
     def __init__(self):
-        self.results = []
+        self.items = []
 
-    def new_instance(self):
-        self.results.append(Result())
+    def new_item(self):
+        self.items.append(Item())
 
     def add_property(self, name, value):
-        setattr(self.results[-1], name, value)
+        setattr(self.items[-1], name, value)
 
 
 class WinrmCollectClient(object):
@@ -38,13 +38,13 @@ class WinrmCollectClient(object):
     @defer.inlineCallbacks
     def do_collect(self, hostname, username, password, wqls):
         client = self._client_factory.create_winrm_client()
-        results = {}
+        items = {}
         for wql in wqls:
-            accumulator = ResultsAccumulator()
+            accumulator = ItemsAccumulator()
             yield client.enumerate(hostname, username, password, wql,
                                    accumulator)
-            results[wql] = accumulator.results
-        defer.returnValue(results)
+            items[wql] = accumulator.items
+        defer.returnValue(items)
 
 
 # ----- An example of useage...
@@ -58,11 +58,11 @@ if __name__ == '__main__':
 
     @defer.inlineCallbacks
     def do_example_collect():
-        results = yield winrm.do_collect(
+        items = yield winrm.do_collect(
             "gilroy", "Administrator", "Z3n0ss",
             ['Select Caption, DeviceID, Name From Win32_Processor',
              'select Name, Label, Capacity from Win32_Volume'])
-        pprint(results)
+        pprint(items)
         reactor.stop()
 
     reactor.callWhenRunning(do_example_collect)

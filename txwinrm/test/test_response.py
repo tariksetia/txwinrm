@@ -115,7 +115,7 @@ INCOMPARABLE_PROPERTIES = dict(
         'Timestamp_Sys100NS'])
 
 
-class Result(object):
+class Item(object):
 
     def __init__(self, cim_class, props):
         self.cim_class = cim_class
@@ -149,18 +149,39 @@ class Result(object):
         return '\n' + pformat(vars(self), indent=4)
 
 
+class AddPropertyWithoutItemError(Exception):
+
+    def __init__(self, msg):
+        Exception("It is an illegal state for add_property to be called "
+                  "before the first call to new_item. {0}".format(msg))
+
+
+class AddSamePropertyNameTwiceWithinItemError(Exception):
+
+    def __init__(self, msg):
+        Exception("It is an illegal state for add_property to be called with "
+                  "the same name within the same item. {0}".format(msg))
+
+
 class MyTestAccumulator(object):
 
     def __init__(self, cim_class, props):
         self.cim_class = cim_class
         self.props = props
-        self.results = []
+        self.items = []
 
-    def new_instance(self):
-        self.results.append(Result(self.cim_class, self.props))
+    def new_item(self):
+        self.items.append(Item(self.cim_class, self.props))
 
     def add_property(self, name, value):
-        setattr(self.results[-1], name, value)
+        if not self.items:
+            raise AddPropertyWithoutItemError(
+                "{0} = {1}".format(name, value))
+        item = self.items[-1]
+        if name in vars(item):
+            raise AddSamePropertyNameTwiceWithinItemError(
+                "{0} = {1}".format(name, value))
+        setattr(item, name, value)
 
 
 class TestWinrm(unittest.TestCase):
@@ -176,38 +197,38 @@ class TestWinrm(unittest.TestCase):
         """
         WQL queries that start with 'select *' have different tags in the XML
         response than queries which specify fields. 'select *' responses use
-        the CIM class as the instance element's tag and as the namespace for
+        the CIM class as the item element's tag and as the namespace for
         the tags of each field. WQL queries that specify fields use XmlFragment
-        as the instance element's tag and do not use a namespace for the tags
+        as the item element's tag and do not use a namespace for the tags
         of each field.The client should normalize both response types so the
-        result is guaranteed to be consistent before further operations are
+        item is guaranteed to be consistent before further operations are
         performed on it. This test goes through a list of queries that
         explicitly list all fields for the CIM class. It runs the queries on
         each know host along with a 'select *' query and verifies that the
-        results match.
+        items match.
         """
         data_by_os_version = get_data_by_os_version()
         for os_version, data_by_cim_class in data_by_os_version.iteritems():
             for cim_class, data in data_by_cim_class.iteritems():
-                star_results = get_results(cim_class, data['properties'],
-                                           data['star'])
-                all_results = get_results(cim_class, data['properties'],
-                                          data['all'])
-                self.assertEqual(star_results, all_results)
-                for results in star_results, all_results:
-                    for result in results:
+                star_items = get_items(cim_class, data['properties'],
+                                       data['star'])
+                all_items = get_items(cim_class, data['properties'],
+                                      data['all'])
+                self.assertEqual(star_items, all_items)
+                for items in star_items, all_items:
+                    for item in items:
                         for prop in data['properties']:
-                            self.assertIn(prop, vars(result))
+                            self.assertIn(prop, vars(item))
 
 
-def get_results(cim_class, props, xml_texts):
-    results = []
+def get_items(cim_class, props, xml_texts):
+    items = []
     for xml_text in xml_texts:
         accumulator = MyTestAccumulator(cim_class, props)
         parser, factory = create_parser_and_factory(accumulator)
         parser.feed(xml_text)
-        results.extend(accumulator.results)
-    return results
+        items.extend(accumulator.items)
+    return items
 
 
 def chop_none_terminated_list(xs):
@@ -340,8 +361,8 @@ class TestDataType(unittest.TestCase):
                 [text_buffer, items_handler])
             parser.setContentHandler(content_handler)
             parser.feed(xml_str)
-            self.assertEqual(len(accumulator.results), 1)
-            actual = getattr(accumulator.results[0], prop)
+            self.assertEqual(len(accumulator.items), 1)
+            actual = getattr(accumulator.items[0], prop)
             self.assertEqual(actual, expected)
 
     def test_items_with_datetime(self):
