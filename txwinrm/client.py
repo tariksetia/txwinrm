@@ -74,9 +74,9 @@ class WinrmClient(object):
         enumerate and pull responses. add_property(name, value) is called with
         each property. All properties added between calls to new_item
         belong to a single item. It is an illegal state for add_property to
-        be called before the first call to new_item. It is an illegal state
-        for add_property to be called with the same name within the same
-        item.
+        be called before the first call to new_item. add_property being called
+        multiple times with the same name within the same item indicates that
+        the property is an array.
         """
         url, headers = self._get_url_and_headers(hostname, username, password)
         request_type = 'enumerate'
@@ -107,7 +107,7 @@ class WinrmClient(object):
                     reader = ErrorReader(hostname, wql)
                     response.deliverBody(reader)
                     yield reader.d
-                    raise Exception("HTTP status" + str(response.code))
+                    raise Exception("HTTP status: {0}".format(response.code))
                 enumeration_context = yield self._handler.handle_response(
                     response, accumulator)
                 if not enumeration_context:
@@ -187,9 +187,9 @@ class ErrorReader(Protocol):
         from xml.etree import ElementTree
         tree = ElementTree.fromstring(self._data)
         log.error("{0._hostname} --> {0._wql}".format(self))
-        log.error(tree.findtext("Envelope/Body/Fault/Reason/Text"))
-        log.error(tree.findtext(
-            "Envelope/Body/Fault/Detail/MSFT_WmiError/Message"))
+        ns = c.XML_NS_SOAP_1_2
+        log.error(tree.findtext('.//{' + ns + '}Text').strip())
+        log.error(tree.findtext('.//{' + ns + '}Detail/*/*').strip())
         self.d.callback(None)
 
 

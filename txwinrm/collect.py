@@ -11,6 +11,15 @@ from pprint import pformat
 from twisted.internet import defer
 from .client import WinrmClientFactory
 
+_MARKER = object()
+
+
+class AddPropertyWithoutItemError(Exception):
+
+    def __init__(self, msg):
+        Exception("It is an illegal state for add_property to be called "
+                  "before the first call to new_item. {0}".format(msg))
+
 
 class Item(object):
 
@@ -27,7 +36,18 @@ class ItemsAccumulator(object):
         self.items.append(Item())
 
     def add_property(self, name, value):
-        setattr(self.items[-1], name, value)
+        if not self.items:
+            raise AddPropertyWithoutItemError(
+                "{0} = {1}".format(name, value))
+        item = self.items[-1]
+        prop = getattr(item, name, _MARKER)
+        if prop is _MARKER:
+            setattr(item, name, value)
+            return
+        if isinstance(prop, list):
+            prop.append(value)
+            return
+        setattr(item, name, [prop, value])
 
 
 class WinrmCollectClient(object):

@@ -156,11 +156,7 @@ class AddPropertyWithoutItemError(Exception):
                   "before the first call to new_item. {0}".format(msg))
 
 
-class AddSamePropertyNameTwiceWithinItemError(Exception):
-
-    def __init__(self, msg):
-        Exception("It is an illegal state for add_property to be called with "
-                  "the same name within the same item. {0}".format(msg))
+_MARKER = object()
 
 
 class MyTestAccumulator(object):
@@ -178,10 +174,14 @@ class MyTestAccumulator(object):
             raise AddPropertyWithoutItemError(
                 "{0} = {1}".format(name, value))
         item = self.items[-1]
-        if name in vars(item):
-            raise AddSamePropertyNameTwiceWithinItemError(
-                "{0} = {1}".format(name, value))
-        setattr(item, name, value)
+        prop = getattr(item, name, _MARKER)
+        if prop is _MARKER:
+            setattr(item, name, value)
+            return
+        if isinstance(prop, list):
+            prop.append(value)
+            return
+        setattr(item, name, [prop, value])
 
 
 class TestWinrm(unittest.TestCase):
@@ -331,6 +331,30 @@ EMPTY_XML_FRAGMENT = """
 <Version></Version>
 """
 
+ARRAY_CIM_CLASS = """
+<p:Roles>LM_Workstation</p:Roles>
+<p:Roles>LM_Server</p:Roles>
+<p:Roles>NT</p:Roles>
+<p:Roles>Server_NT</p:Roles>
+"""
+
+ARRAY_XML_FRAGMENT = """
+<Roles>LM_Workstation</Roles>
+<Roles>LM_Server</Roles>
+<Roles>NT</Roles>
+<Roles>Server_NT</Roles>
+"""
+
+
+def parse_xml_str(xml_str, accumulator):
+    parser = sax.make_parser()
+    parser.setFeature(sax.handler.feature_namespaces, True)
+    text_buffer = TextBufferingContentHandler()
+    items_handler = ItemsContentHandler(text_buffer, accumulator)
+    content_handler = ChainingContentHandler([text_buffer, items_handler])
+    parser.setContentHandler(content_handler)
+    parser.feed(xml_str)
+
 
 class TestDataType(unittest.TestCase):
 
@@ -352,15 +376,8 @@ class TestDataType(unittest.TestCase):
 
     def _do_test_of_prop_parsing(self, data):
         for xml_str, prop, expected in data:
-            parser = sax.make_parser()
-            parser.setFeature(sax.handler.feature_namespaces, True)
-            text_buffer = TextBufferingContentHandler()
             accumulator = MyTestAccumulator('foo', 'bar')
-            items_handler = ItemsContentHandler(text_buffer, accumulator)
-            content_handler = ChainingContentHandler(
-                [text_buffer, items_handler])
-            parser.setContentHandler(content_handler)
-            parser.feed(xml_str)
+            parse_xml_str(xml_str, accumulator)
             self.assertEqual(len(accumulator.items), 1)
             actual = getattr(accumulator.items[0], prop)
             self.assertEqual(actual, expected)
@@ -385,11 +402,19 @@ class TestDataType(unittest.TestCase):
         self._do_test_of_prop_parsing(data)
 
     def test_empty(self):
-        empty_1 = CIM_CLASS_FMT.format(
-            cim_class="Win32_Processor",
-            properties=EMPTY_CIM_CLASS)
+        empty_1 = CIM_CLASS_FMT.format(cim_class="Win32_Processor",
+                                       properties=EMPTY_CIM_CLASS)
         empty_2 = XML_FRAGMENT_FMT.format(properties=EMPTY_XML_FRAGMENT)
         data = [(empty_1, "Version", ""), (empty_2, "Version", "")]
+        self._do_test_of_prop_parsing(data)
+
+    def test_array(self):
+        array_1 = CIM_CLASS_FMT.format(cim_class="Win32_ComputerSystem",
+                                       properties=ARRAY_CIM_CLASS)
+        array_2 = XML_FRAGMENT_FMT.format(properties=ARRAY_XML_FRAGMENT)
+        prop = "Roles"
+        expected = ["LM_Workstation", "LM_Server", "NT", "Server_NT"]
+        data = [(array_1, prop, expected), (array_2, prop, expected)]
         self._do_test_of_prop_parsing(data)
 
 

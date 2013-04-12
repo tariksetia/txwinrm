@@ -45,7 +45,7 @@ You can enable the WinRM service on Windows Server 2003, 2008 and 2012. Run
 Command Prompt as Administrator and execute the following commands
 
     winrm quickconfig
-    winrm s winrm/config/service @{AllowUnencrypted="true"}
+    winrm s winrm/config/service @{AllowUnencrypted="true";MaxConcurrentOperationsPerUser="4294967295"}
     winrm s winrm/config/service/auth @{Basic="true"}
 
 
