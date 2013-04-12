@@ -7,47 +7,8 @@
 #
 ##############################################################################
 
-from pprint import pformat
 from twisted.internet import defer
 from .client import WinrmClientFactory
-
-_MARKER = object()
-
-
-class AddPropertyWithoutItemError(Exception):
-
-    def __init__(self, msg):
-        Exception("It is an illegal state for add_property to be called "
-                  "before the first call to new_item. {0}".format(msg))
-
-
-class Item(object):
-
-    def __repr__(self):
-        return '\n' + pformat(vars(self), indent=4)
-
-
-class ItemsAccumulator(object):
-
-    def __init__(self):
-        self.items = []
-
-    def new_item(self):
-        self.items.append(Item())
-
-    def add_property(self, name, value):
-        if not self.items:
-            raise AddPropertyWithoutItemError(
-                "{0} = {1}".format(name, value))
-        item = self.items[-1]
-        prop = getattr(item, name, _MARKER)
-        if prop is _MARKER:
-            setattr(item, name, value)
-            return
-        if isinstance(prop, list):
-            prop.append(value)
-            return
-        setattr(item, name, [prop, value])
 
 
 class WinrmCollectClient(object):
@@ -60,10 +21,8 @@ class WinrmCollectClient(object):
         client = self._client_factory.create_winrm_client()
         items = {}
         for wql in wqls:
-            accumulator = ItemsAccumulator()
-            yield client.enumerate(hostname, username, password, wql,
-                                   accumulator)
-            items[wql] = accumulator.items
+            items[wql] = yield client.enumerate(
+                hostname, username, password, wql)
         defer.returnValue(items)
 
 

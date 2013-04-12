@@ -33,49 +33,25 @@ def get_vmpeak():
                 return value
 
 
-class ElementPrinter(object):
-
-    def __init__(self, hostname, wql, include_header):
-        self._hostname = hostname
-        self._wql = wql
-        self._include_header = include_header
-        self._properties = []
-        self._demarc = '-' * 4
-
-    def new_item(self):
-        if self._properties:
-            self._properties.append((self._demarc, ''))
-
-    def add_property(self, name, value):
-        global GLOBAL_ELEMENT_COUNT
-        GLOBAL_ELEMENT_COUNT += 1
-        self._properties.append((name, value))
-
-    def print_elements_with_text(self, item):
-        if self._include_header:
-            print '\n', self._hostname, "==>", self._wql
-            indent = '  '
+def print_items(items, hostname, wql, include_header):
+    global GLOBAL_ELEMENT_COUNT
+    if include_header:
+        print '\n', hostname, "==>", wql
+        indent = '  '
+    else:
+        indent = ''
+    is_first_item = True
+    for item in items:
+        if is_first_item:
+            is_first_item = False
         else:
-            indent = ''
-        for tag, text in self._properties:
-            if tag == self._demarc:
-                print '{0}{1}'.format(indent, self._demarc)
-            else:
-                print '{0}{1} = {2}'.format(indent, tag, text)
-
-
-class ProcessStatsAccumulator(object):
-
-    def __init__(self):
-        self.process_stats = []
-
-    def new_item(self):
-        self.process_stats.append({})
-
-    def add_property(self, name, value):
-        log.debug("ProcessStatsAccumulator add_property {0}, {1}"
-                  .format(name, value))
-        self.process_stats[-1][name] = value
+            print '{0}{1}'.format(indent, '-' * 4)
+        for name, value in vars(item).iteritems():
+            GLOBAL_ELEMENT_COUNT += 1
+            text = value
+            if isinstance(value, list):
+                text = ', '.join(value)
+            print '{0}{1} = {2}'.format(indent, name, text)
 
 
 @defer.inlineCallbacks
@@ -83,29 +59,28 @@ def get_remote_process_stats(client, hostname, username, password):
     wql = 'select Name, IDProcess, PercentProcessorTime,' \
           'Timestamp_Sys100NS from Win32_PerfRawData_PerfProc_Process ' \
           'where name like "wmi%"'
-    accumulator = ProcessStatsAccumulator()
-    yield client.enumerate(hostname, username, password, wql, accumulator)
-    defer.returnValue(accumulator.process_stats)
+    items = yield client.enumerate(hostname, username, password, wql)
+    defer.returnValue(items)
 
 
 def calculate_remote_cpu_util(initial_stats, final_stats):
-    for hostname, initial_stats_dicts in initial_stats.iteritems():
-        final_stats_dicts = final_stats[hostname]
+    for hostname, initial_stats_items in initial_stats.iteritems():
+        final_stats_items = final_stats[hostname]
         print >>sys.stderr, "   ", hostname
-        for initial_stats_dict in initial_stats_dicts:
-            name = initial_stats_dict["Name"]
-            pid = initial_stats_dict["IDProcess"]
-            for final_stats_dict in final_stats_dicts:
-                if pid == final_stats_dict["IDProcess"]:
+        for initial_stats_item in initial_stats_items:
+            name = initial_stats_item.Name
+            pid = initial_stats_item.IDProcess
+            for final_stats_item in final_stats_items:
+                if pid == final_stats_item.IDProcess:
                     break
             else:
                 print >>sys.stderr, "WARNING: Could not find final process " \
                                     "stats for", hostname, pid
                 continue
-            x1 = float(final_stats_dict['PercentProcessorTime'])
-            x0 = float(initial_stats_dict['PercentProcessorTime'])
-            y1 = float(final_stats_dict['Timestamp_Sys100NS'])
-            y0 = float(initial_stats_dict['Timestamp_Sys100NS'])
+            x1 = float(final_stats_item.PercentProcessorTime)
+            x0 = float(initial_stats_item.PercentProcessorTime)
+            y1 = float(final_stats_item.Timestamp_Sys100NS)
+            y0 = float(initial_stats_item.Timestamp_Sys100NS)
             cpu_pct = (x1 - x0) / (y1 - y0)
             fmt = "      {cpu_pct:.2%} of CPU time used by {name} "\
                   "process with pid {pid}"
@@ -130,7 +105,7 @@ def get_initial_wmiprvse_stats(client, config):
 
 
 @defer.inlineCallbacks
-def print_summary(items, client, config, initial_wmiprvse_stats, good_hosts):
+def print_summary(results, client, config, initial_wmiprvse_stats, good_hosts):
     global exit_status
     final_wmiprvse_stats = {}
     for hostname, username, password in good_hosts:
@@ -142,7 +117,7 @@ def print_summary(items, client, config, initial_wmiprvse_stats, good_hosts):
                         len(config.hosts), 'hosts'
     print >>sys.stderr, "  Processed", GLOBAL_ELEMENT_COUNT, "elements"
     failure_count = 0
-    for success, item in items:
+    for success, result in results:
         if not success:
             failure_count += 1
     if failure_count:
@@ -172,22 +147,22 @@ def send_requests(client, config, do_summary):
     ds = []
     for hostname, username, password in good_hosts:
         for wql in config.wqls:
-            printer = ElementPrinter(hostname, wql, do_summary)
-            d = client.enumerate(hostname, username, password, wql, printer)
-            d.addCallback(printer.print_elements_with_text)
+            d = client.enumerate(hostname, username, password, wql)
+            d.addCallback(print_items, hostname, wql, do_summary)
             ds.append(d)
     dl = defer.DeferredList(ds, consumeErrors=True)
 
     @defer.inlineCallbacks
-    def dl_callback(items):
-        try:
-            if do_summary:
-                yield print_summary(items, client, config,
-                                    initial_wmiprvse_stats, good_hosts)
-        finally:
-            reactor.stop()
+    def dl_callback(results):
+        if do_summary:
+            yield print_summary(results, client, config,
+                                initial_wmiprvse_stats, good_hosts)
+
+    def stop_reactor(results):
+        reactor.stop()
 
     dl.addCallback(dl_callback)
+    dl.addBoth(stop_reactor)
 
 
 class Config(object):

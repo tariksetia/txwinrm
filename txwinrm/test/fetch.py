@@ -61,44 +61,11 @@ def mkdir_p(path):
             raise
 
 
-class SingleValueAccumulator(object):
-
-    def __init__(self):
-        self.value = None
-
-    def new_item(self):
-        pass
-
-    def add_property(self, name, value):
-        self.value = value
-
-
-class PropertiesAccumulator(object):
-
-    def __init__(self):
-        self._item_props = []
-
-    @property
-    def properties(self):
-        required_props = self._item_props[0]
-        for item_props in self._item_props[1:]:
-            required_props &= item_props
-        return required_props
-
-    def new_item(self):
-        self._item_props.append(set())
-
-    def add_property(self, name, value):
-        self._item_props[-1].add(name)
-
-
-class DoNothingAccumulator(object):
-
-    def new_item(self):
-        pass
-
-    def add_property(self, name, value):
-        pass
+def find_required_properties(items):
+    required_props = set(vars(items[0]).keys())
+    for item in items[1:]:
+        required_props &= set(vars(item).keys())
+    return required_props
 
 
 class WriteXmlToFileProtocol(Protocol):
@@ -138,20 +105,20 @@ class WriteXmlToFileHandler(object):
 
 
 @defer.inlineCallbacks
-def do_enumerate(factory, dirname, cim_class, props, query_type, accumulator):
+def do_enumerate(factory, dirname, cim_class, props, query_type):
     wql = 'select {0} from {1}'.format(props, cim_class)
     handler = WriteXmlToFileHandler(dirname, cim_class, query_type)
     client = factory.create_winrm_client_with_handler(handler)
-    yield client.enumerate(HOSTNAME, USERNAME, PASSWORD, wql, accumulator)
+    items = yield client.enumerate(HOSTNAME, USERNAME, PASSWORD, wql)
+    defer.returnValue(items)
 
 
 @defer.inlineCallbacks
 def get_subdirname(factory):
     client = factory.create_winrm_client()
-    wql = 'select caption from Win32_OperatingSystem'
-    accumulator = SingleValueAccumulator()
-    yield client.enumerate(HOSTNAME, USERNAME, PASSWORD, wql, accumulator)
-    match = re.search(r'(2003|2008|2012)', accumulator.value)
+    wql = 'select Caption from Win32_OperatingSystem'
+    items = yield client.enumerate(HOSTNAME, USERNAME, PASSWORD, wql)
+    match = re.search(r'(2003|2008|2012)', items[0].Caption)
     defer.returnValue('server_{0}'.format(match.group(1)))
 
 
@@ -163,16 +130,14 @@ def fetch():
     dirname = os.path.join(basedir, 'data', subdirname)
     mkdir_p(dirname)
     for cim_class in CIM_CLASSES:
-        accumulator = PropertiesAccumulator()
-        yield do_enumerate(factory, dirname, cim_class, '*', 'star',
-                           accumulator)
+        items = yield do_enumerate(factory, dirname, cim_class, '*', 'star')
+        required_properties = find_required_properties(items)
         filename = '{0}.properties'.format(cim_class)
         with open(os.path.join(dirname, filename), 'w') as f:
-            for prop in accumulator.properties:
+            for prop in required_properties:
                 f.write(prop + '\n')
-        props = ','.join(accumulator.properties)
-        yield do_enumerate(factory, dirname, cim_class, props, 'all',
-                           DoNothingAccumulator())
+        props = ','.join(required_properties)
+        yield do_enumerate(factory, dirname, cim_class, props, 'all')
     reactor.stop()
 
 

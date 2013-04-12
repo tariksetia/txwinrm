@@ -12,6 +12,7 @@ import re
 import base64
 import logging
 import httplib
+from pprint import pformat
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol
 from twisted.internet.error import TimeoutError
@@ -23,6 +24,7 @@ from . import constants as c
 log = logging.getLogger('zen.winrm')
 MAX_REQUESTS_PER_ENUMERATION = 9999
 XML_WHITESPACE_PATTERN = re.compile(r'>\s+<')
+_MARKER = object()
 
 
 def get_request_template(name):
@@ -31,6 +33,51 @@ def get_request_template(name):
     with open(request_fmt_filename) as f:
         raw_request_template = f.read()
     return XML_WHITESPACE_PATTERN.sub('><', raw_request_template).strip()
+
+
+class AddPropertyWithoutItemError(Exception):
+
+    def __init__(self, msg):
+        Exception("It is an illegal state for add_property to be called "
+                  "before the first call to new_item. {0}".format(msg))
+
+
+class Item(object):
+
+    def __repr__(self):
+        return '\n' + pformat(vars(self), indent=4)
+
+
+class ItemsAccumulator(object):
+    """
+    new_item() is called each time a new item is recognized in the
+    enumerate and pull responses. add_property(name, value) is called with
+    each property. All properties added between calls to new_item
+    belong to a single item. It is an illegal state for add_property to
+    be called before the first call to new_item. add_property being called
+    multiple times with the same name within the same item indicates that
+    the property is an array.
+    """
+
+    def __init__(self):
+        self.items = []
+
+    def new_item(self):
+        self.items.append(Item())
+
+    def add_property(self, name, value):
+        if not self.items:
+            raise AddPropertyWithoutItemError(
+                "{0} = {1}".format(name, value))
+        item = self.items[-1]
+        prop = getattr(item, name, _MARKER)
+        if prop is _MARKER:
+            setattr(item, name, value)
+            return
+        if isinstance(prop, list):
+            prop.append(value)
+            return
+        setattr(item, name, [prop, value])
 
 
 class WinrmClient(object):
@@ -63,25 +110,15 @@ class WinrmClient(object):
         return url, headers
 
     @defer.inlineCallbacks
-    def enumerate(self, hostname, username, password, wql, accumulator):
+    def enumerate(self, hostname, username, password, wql):
         """
-        Runs a remote WQL query. The accumulator parameter adheres to the
-        following interface:
-            new_item()
-            add_property(name, value)
-
-        new_item() is called each time a new item is recognized in the
-        enumerate and pull responses. add_property(name, value) is called with
-        each property. All properties added between calls to new_item
-        belong to a single item. It is an illegal state for add_property to
-        be called before the first call to new_item. add_property being called
-        multiple times with the same name within the same item indicates that
-        the property is an array.
+        Runs a remote WQL query.
         """
         url, headers = self._get_url_and_headers(hostname, username, password)
         request_type = 'enumerate'
         resource_uri_prefix = c.WMICIMV2
         enumeration_context = None
+        accumulator = ItemsAccumulator()
         try:
             for i in xrange(MAX_REQUESTS_PER_ENUMERATION):
                 request_fmt = self._request_templates[request_type]
@@ -115,6 +152,7 @@ class WinrmClient(object):
                 request_type = 'pull'
             else:
                 raise Exception("Reached max requests per enumeration.")
+            defer.returnValue(accumulator.items)
         except TimeoutError, e:
             if hostname in self._timedout_hosts:
                 return
