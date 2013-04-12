@@ -12,6 +12,7 @@ import re
 import base64
 import logging
 import httplib
+from xml.etree import cElementTree
 from pprint import pformat
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol
@@ -22,17 +23,120 @@ from .response import SaxResponseHandler
 from . import constants as c
 
 log = logging.getLogger('zen.winrm')
-MAX_REQUESTS_PER_ENUMERATION = 9999
-XML_WHITESPACE_PATTERN = re.compile(r'>\s+<')
+
+
+# general-purpose code, used by enumerate and shell/cmd -----------------------
+
+_XML_WHITESPACE_PATTERN = re.compile(r'>\s+<')
 _MARKER = object()
+_AGENT = None
+
+
+def _get_agent():
+    global _AGENT
+    if _AGENT is None:
+        try:
+            # HTTPConnectionPool has been present since Twisted version 12.1
+            from twisted.web.client import HTTPConnectionPool
+            pool = HTTPConnectionPool(reactor, persistent=True)
+            pool.maxPersistentPerHost = c.MAX_PERSISTENT_PER_HOST
+            pool.cachedConnectionTimeout = c.CACHED_CONNECTION_TIMEOUT
+            _AGENT = Agent(
+                reactor, connectTimeout=c.CONNECT_TIMEOUT, pool=pool)
+        except ImportError:
+            try:
+                # connectTimeout first showed up in Twisted version 11.1
+                _AGENT = Agent(reactor, connectTimeout=c.CONNECT_TIMEOUT)
+            except TypeError:
+                _AGENT = Agent(reactor)
+    return _AGENT
+
+
+class _StringProducer(object):
+
+    def __init__(self, body):
+        self.body = body
+        self.length = len(body)
+
+    def startProducing(self, consumer):
+        consumer.write(self.body)
+        return defer.succeed(None)
+
+
+def _parse_error_message(xml_str):
+    tree = cElementTree.fromstring(xml_str)
+    text = tree.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Text').strip()
+    detail = tree.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Detail/*/*').strip()
+    return "{0} {1}".format(text, detail)
+
+
+class _ErrorReader(Protocol):
+
+    def __init__(self):
+        self.d = defer.Deferred()
+        self._data = []
+
+    def dataReceived(self, data):
+        self._data.append(data)
+
+    def connectionLost(self, reason):
+        message = _parse_error_message(''.join(self._data))
+        self.d.callback(message)
+
+
+class RequestError(Exception):
+    pass
+
+
+class UnauthorizedError(RequestError):
+    pass
+
+_REQUEST_TEMPLATES = None
 
 
 def get_request_template(name):
-    basedir = os.path.dirname(os.path.abspath(__file__))
-    request_fmt_filename = os.path.join(basedir, 'request', name + '.xml')
-    with open(request_fmt_filename) as f:
-        raw_request_template = f.read()
-    return XML_WHITESPACE_PATTERN.sub('><', raw_request_template).strip()
+    if _REQUEST_TEMPLATES is None:
+        basedir = os.path.dirname(os.path.abspath(__file__))
+        for name in 'enumerate', 'pull', \
+                    'create', 'command', 'receive', 'signal', 'delete':
+            filename = '{0}.xml'.format(name)
+            path = os.path.join(basedir, 'request', filename)
+            with open(path) as f:
+                _REQUEST_TEMPLATES[name] = \
+                    _XML_WHITESPACE_PATTERN.sub('><', f.read()).strip()
+    return _REQUEST_TEMPLATES
+
+
+def get_url_and_headers(hostname, username, password):
+    url = "http://{hostname}:5985/wsman".format(hostname=hostname)
+    authstr = "{0}:{1}".format(username, password)
+    auth = 'Basic {0}'.format(base64.encodestring(authstr).strip())
+    headers = Headers({'Content-Type': ['application/soap+xml;charset=UTF-8'],
+                       'Authorization': [auth]})
+    return url, headers
+
+
+@defer.inlineCallbacks
+def send_request(url, headers, request_template_name, **kwargs):
+    request = get_request_template(request_template_name).format(**kwargs)
+    log.debug(request)
+    body = _StringProducer(request)
+    response = yield _get_agent().request('POST', url, headers, body)
+    if response.code == httplib.UNAUTHORIZED:
+        raise UnauthorizedError("unauthorized, check username and password.")
+    elif response.code != httplib.OK:
+        reader = _ErrorReader()
+        response.deliverBody(reader)
+        message = yield reader.d
+        raise RequestError("HTTP status: {0}. {1}".format(
+            response.code, message))
+    defer.returnValue(response)
+
+
+# enumerate-specific ----------------------------------------------------------
+
+_MAX_REQUESTS_PER_ENUMERATION = 9999
+_DEFAULT_RESOURCE_URI = '{0}/*'.format(c.WMICIMV2)
 
 
 class AddPropertyWithoutItemError(Exception):
@@ -82,74 +186,32 @@ class ItemsAccumulator(object):
 
 class WinrmClient(object):
 
-    def __init__(self, agent, handler, request_templates):
-        self._agent = agent
+    def __init__(self, handler):
         self._handler = handler
-        self._request_templates = request_templates
-        self._unauthorized_hosts = []
-        self._timedout_hosts = []
-
-    def _get_url_and_headers(self, hostname, username, password):
-        if hostname in self._unauthorized_hosts:
-            if log.isEnabledFor(logging.DEBUG):
-                log.debug(hostname + " previously returned "
-                                     "unauthorized. Skipping.")
-            return
-        if hostname in self._timedout_hosts:
-            if log.isEnabledFor(logging.DEBUG):
-                log.debug(hostname + " previously timed out. "
-                                     "Skipping.")
-            return
-        url = "http://{hostname}:5985/wsman".format(hostname=hostname)
-        authstr = "{username}:{password}".format(username=username,
-                                                 password=password)
-        auth = 'Basic ' + base64.encodestring(authstr).strip()
-        headers = Headers(
-            {'Content-Type': ['application/soap+xml;charset=UTF-8'],
-             'Authorization': [auth]})
-        return url, headers
 
     @defer.inlineCallbacks
-    def enumerate(self, hostname, username, password, wql):
+    def enumerate(self, hostname, username, password, wql,
+                  resource_uri=_DEFAULT_RESOURCE_URI):
         """
         Runs a remote WQL query.
         """
-        url, headers = self._get_url_and_headers(hostname, username, password)
-        request_type = 'enumerate'
-        resource_uri_prefix = c.WMICIMV2
+        url, headers = get_url_and_headers(hostname, username, password)
+        request_template_name = 'enumerate'
         enumeration_context = None
         accumulator = ItemsAccumulator()
         try:
-            for i in xrange(MAX_REQUESTS_PER_ENUMERATION):
-                request_fmt = self._request_templates[request_type]
-                request = request_fmt.format(
-                    resource_uri=resource_uri_prefix + '/*',
-                    wql=wql,
+            for i in xrange(_MAX_REQUESTS_PER_ENUMERATION):
+                response = yield send_request(
+                    url, headers, request_template_name,
+                    resource_uri=resource_uri, wql=wql,
                     enumeration_context=enumeration_context)
-                if log.isEnabledFor(logging.DEBUG):
-                    log.debug(request)
-                body = StringProducer(request)
-                response = yield self._agent.request('POST', url, headers,
-                                                     body)
-                if log.isEnabledFor(logging.DEBUG):
-                    log.debug("{0} HTTP status: {1}".format(
-                        hostname, response.code))
-                if response.code == httplib.UNAUTHORIZED:
-                    if hostname in self._unauthorized_hosts:
-                        return
-                    self._unauthorized_hosts.append(hostname)
-                    raise Unauthorized("unauthorized, check username and "
-                                       "password.")
-                if response.code != 200:
-                    reader = ErrorReader(hostname, wql)
-                    response.deliverBody(reader)
-                    yield reader.d
-                    raise Exception("HTTP status: {0}".format(response.code))
+                log.debug("{0} HTTP status: {1}".format(
+                    hostname, response.code))
                 enumeration_context = yield self._handler.handle_response(
                     response, accumulator)
                 if not enumeration_context:
                     break
-                request_type = 'pull'
+                request_template_name = 'pull'
             else:
                 raise Exception("Reached max requests per enumeration.")
             defer.returnValue(accumulator.items)
@@ -163,84 +225,128 @@ class WinrmClient(object):
             log.error('{0} {1}'.format(hostname, e))
             raise
 
+
+def create_winrm_client():
+    handler = SaxResponseHandler()
+    return create_winrm_client_with_handler(handler)
+
+
+def create_winrm_client_with_handler(handler):
+    return WinrmClient(handler)
+
+
+# shell/cmd-specific ----------------------------------------------------------
+
+_MAX_REQUESTS_PER_COMMAND = 9999
+
+
+class CommandResponse(object):
+
+    def __init__(self, stdout, stderr, exit_code):
+        self._stdout = stdout
+        self._stderr = stderr
+        self._exit_code = exit_code
+
+    @property
+    def stdout(self):
+        return self._stdout
+
+    @property
+    def stderr(self):
+        return self._stderr
+
+    @property
+    def exit_code(self):
+        return self._exit_code
+
+
+class _StringProtocol(Protocol):
+
+    def __init__(self):
+        self.d = defer.Deferred()
+        self._data = []
+
+    def dataReceived(self, data):
+        self._data.append(data)
+
+    def connectionLost(self, reason):
+        self.d.callback(''.join(self._data))
+
+
+class WinrsClient(object):
+
     @defer.inlineCallbacks
     def run_commands(self, hostname, username, password, commands):
         """
         Run commands in a remote shell like the winrs application on Windows.
         Accepts multiple commands. Returns a dictionary with the following
         structure:
-            {<command>: dict(stdout=[<stripped-line>, ...],
-                             stdin=[<stripped-line>, ...],
-                             exit_code=<int>),
+            {<command>: CommandResponse
+                             .stdout = [<stripped-line>, ...]
+                             .stderr = [<stripped-line>, ...]
+                             .exit_code = <int>
              ...}
         """
-        url, headers = self._get_url_and_headers(hostname, username, password)
+        url, headers = self._request_helper.get_url_and_headers(
+            hostname, username, password)
+        shell_id = yield self._create_shell(url, headers)
+        cmd_responses = []
+        for command in commands:
+            cmd_response = yield self._run_command(
+                hostname, url, headers, command, shell_id)
+            cmd_responses.append(cmd_response)
+        yield self._delete_shell(url, headers, shell_id)
+        defer.returnValue(cmd_responses)
+
+    @defer.inlineCallbacks
+    def _create_shell(self, url, headers):
+        resp = yield send_request(url, headers, 'create')
+        proto = _StringProtocol()
+        resp.deliverBody(proto)
+        xml_str = yield proto.d
+        tree = cElementTree.fromstring(xml_str)
+        xpath = './/{' + c.XML_NS_WS_MAN + '}Selector[@Name="ShellId"]'
+        shell_id = tree.findtext(xpath).strip()
+        defer.returnValue(shell_id)
+
+    @defer.inlineCallbacks
+    def _run_command(self, url, headers, shell_id, command):
+        command_resp = yield send_request(
+            url, headers, 'command', shell_id=shell_id)
+        proto = _StringProtocol()
+        command_resp.deliverBody(proto)
+        xml_str = yield proto.d
+        tree = cElementTree.fromstring(xml_str)
+        xpath = './/{' + c.XML_NS_MSRSP + '}CommandId'
+        command_id = tree.findtext(xpath).strip()
+        stdout_parts = []
+        stderr_parts = []
+        for i in xrange(_MAX_REQUESTS_PER_COMMAND):
+            receive_resp = yield send_request(
+                url, headers, 'receive', shell_id=shell_id,
+                command_id=command_id)
+
+            stdout_parts.append(stdout_part)
+            stderr_parts.append(stderr_part)
+
+            if exit_code is not None:
+                break
+        else:
+            raise Exception("Reached max requests per command.")
+        yield _send_request(
+            url, headers, 'signal', shell_id=shell_id, command_id=command_id)
+        stdout = ''.join(stdout_parts).splitlines()
+        stderr = ''.join(stderr_parts).splitlines()
+        defer.returnValue(CommandResponse(stdout, stderr, exit_code))
+
+    @defer.inlineCallbacks
+    def _delete_shell(self, url, headers, shell_id):
+        yield send_request(url, headers, 'cmd_delete', shell_id=shell_id)
 
 
-class WinrmClientFactory(object):
-
-    agent = None
-    request_templates = dict(enumerate=get_request_template('enumerate'),
-                             pull=get_request_template('pull'))
-
-    @classmethod
-    def _get_or_create_agent(cls):
-        if cls.agent is not None:
-            return cls.agent
-        try:
-            # HTTPConnectionPool has been present since Twisted version 12.1
-            from twisted.web.client import HTTPConnectionPool
-            pool = HTTPConnectionPool(reactor, persistent=True)
-            pool.maxPersistentPerHost = c.MAX_PERSISTENT_PER_HOST
-            pool.cachedConnectionTimeout = c.CACHED_CONNECTION_TIMEOUT
-            return Agent(reactor, connectTimeout=c.CONNECT_TIMEOUT, pool=pool)
-        except ImportError:
-            try:
-                # connectTimeout first showed up in Twisted version 11.1
-                return Agent(reactor, connectTimeout=c.CONNECT_TIMEOUT)
-            except TypeError:
-                return Agent(reactor)
-
-    def create_winrm_client(self):
-        handler = SaxResponseHandler()
-        return self.create_winrm_client_with_handler(handler)
-
-    def create_winrm_client_with_handler(self, handler):
-        agent = self._get_or_create_agent()
-        return WinrmClient(agent, handler, self.request_templates)
+class WinrsClientFactory(object):
 
 
-class ErrorReader(Protocol):
 
-    def __init__(self, hostname, wql):
-        self.d = defer.Deferred()
-        self._hostname = hostname
-        self._wql = wql
-        self._data = ""
-
-    def dataReceived(self, data):
-        self._data += data
-
-    def connectionLost(self, reason):
-        from xml.etree import ElementTree
-        tree = ElementTree.fromstring(self._data)
-        log.error("{0._hostname} --> {0._wql}".format(self))
-        ns = c.XML_NS_SOAP_1_2
-        log.error(tree.findtext('.//{' + ns + '}Text').strip())
-        log.error(tree.findtext('.//{' + ns + '}Detail/*/*').strip())
-        self.d.callback(None)
-
-
-class StringProducer(object):
-
-    def __init__(self, body):
-        self.body = body
-        self.length = len(body)
-
-    def startProducing(self, consumer):
-        consumer.write(self.body)
-        return defer.succeed(None)
-
-
-class Unauthorized(Exception):
-    pass
+    def create_winrs_client(self):
+        return WinrsClient(_agent(), self.request_templates)
