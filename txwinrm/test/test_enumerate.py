@@ -17,9 +17,8 @@ import unittest
 from xml import sax
 from pprint import pformat
 from datetime import datetime
-from ..response import create_parser_and_factory, get_datetime, \
+from ..enumerate import create_parser_and_factory, get_datetime, \
     ItemsContentHandler, ChainingContentHandler, TextBufferingContentHandler
-from ..client import _parse_error_message
 
 MAX_RESPONSE_FILES = 999
 
@@ -417,24 +416,6 @@ class TestDataType(unittest.TestCase):
         expected = ["LM_Workstation", "LM_Server", "NT", "Server_NT"]
         data = [(array_1, prop, expected), (array_2, prop, expected)]
         self._do_test_of_prop_parsing(data)
-
-
-class TestErrorReader(unittest.TestCase):
-
-    def test_max_concurrent(self):
-        dirpath = os.path.dirname(os.path.abspath(__file__))
-        path = os.path.join(dirpath, 'max_concurrent.xml')
-        with open(path) as f:
-            actual = _parse_error_message(f.read())
-        expected = 'The WS-Management service cannot process the request. ' \
-            'The maximum number of concurrent operations for this user has ' \
-            'been exceeded. Close existing operations for this user, or ' \
-            'raise the quota for this user. The WS-Management service ' \
-            'cannot process the request. This user is allowed a maximum ' \
-            'number of 15 concurrent operations, which has been exceeded. ' \
-            'Close existing operations for this user, or raise the quota ' \
-            'for this user.'
-        self.assertEqual(actual, expected)
 
 if __name__ == '__main__':
     unittest.main()

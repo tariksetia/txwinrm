@@ -93,6 +93,8 @@ class WinrmClient(object):
         accumulator = ItemsAccumulator()
         try:
             for i in xrange(_MAX_REQUESTS_PER_ENUMERATION):
+                log.debug('{0} "{1}" {2}'.format(
+                    self._hostname, wql, request_template_name))
                 response = yield send_request(
                     self._url, self._headers, request_template_name,
                     resource_uri=resource_uri, wql=wql,

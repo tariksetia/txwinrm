@@ -86,16 +86,22 @@ class UnauthorizedError(RequestError):
 _REQUEST_TEMPLATES = None
 
 
+def _build_request_templates():
+    global _REQUEST_TEMPLATES
+    _REQUEST_TEMPLATES = {}
+    basedir = os.path.dirname(os.path.abspath(__file__))
+    for name in 'enumerate', 'pull', \
+                'create', 'command', 'receive', 'signal', 'delete':
+        filename = '{0}.xml'.format(name)
+        path = os.path.join(basedir, 'request', filename)
+        with open(path) as f:
+            _REQUEST_TEMPLATES[name] = \
+                _XML_WHITESPACE_PATTERN.sub('><', f.read()).strip()
+
+
 def get_request_template(name):
     if _REQUEST_TEMPLATES is None:
-        basedir = os.path.dirname(os.path.abspath(__file__))
-        for name in 'enumerate', 'pull', \
-                    'create', 'command', 'receive', 'signal', 'delete':
-            filename = '{0}.xml'.format(name)
-            path = os.path.join(basedir, 'request', filename)
-            with open(path) as f:
-                _REQUEST_TEMPLATES[name] = \
-                    _XML_WHITESPACE_PATTERN.sub('><', f.read()).strip()
+        _build_request_templates()
     return _REQUEST_TEMPLATES[name]
 
 
