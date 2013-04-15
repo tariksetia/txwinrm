@@ -59,7 +59,7 @@ class _StringProtocol(Protocol):
         self.d.callback(''.join(self._data))
 
 
-def build_command_line_elem(command_line):
+def _build_command_line_elem(command_line):
     command_line_parts = shlex.split(command_line, posix=False)
     prefix = "rsp"
     ET.register_namespace(prefix, c.XML_NS_MSRSP)
@@ -77,12 +77,40 @@ def build_command_line_elem(command_line):
     return str_io.getvalue()
 
 
-def stripped_lines(stream_parts):
+def _stripped_lines(stream_parts):
     results = []
     for line in ''.join(stream_parts).splitlines():
         if line.strip():
             results.append(line.strip())
     return results
+
+
+def _find_shell_id(elem):
+    xpath = './/{%s}Selector[@Name="ShellId"]' % c.XML_NS_WS_MAN
+    return elem.findtext(xpath).strip()
+
+
+def _find_command_id(elem):
+    xpath = './/{%s}CommandId' % c.XML_NS_MSRSP
+    return elem.findtext(xpath).strip()
+
+
+def _find_stream(elem, command_id, stream_name):
+    xpath = './/{%s}Stream[@Name="%s"][@CommandId="%s"]' \
+        % (c.XML_NS_MSRSP, stream_name, command_id)
+    for elem in elem.findall(xpath):
+        if elem.text is not None:
+            yield base64.decodestring(elem.text)
+
+
+def _find_exit_code(elem, command_id):
+    command_state_xpath = './/{%s}CommandState[@CommandId="%s"]' \
+        % (c.XML_NS_MSRSP, command_id)
+    command_state_elem = elem.find(command_state_xpath)
+    if command_state_elem is not None:
+        exit_code_xpath = './/{%s}ExitCode' % c.XML_NS_MSRSP
+        exit_code_text = command_state_elem.findtext(exit_code_xpath)
+        return None if exit_code_text is None else int(exit_code_text)
 
 
 class WinrsClient(object):
@@ -111,7 +139,7 @@ class WinrsClient(object):
         defer.returnValue(cmd_response)
 
     @defer.inlineCallbacks
-    def _send_request_and_get_etree(self, request_template_name, **kwargs):
+    def _send_request(self, request_template_name, **kwargs):
         log.debug('sending winrs request: {0} {1}'.format(
             request_template_name, kwargs))
         resp = yield send_request(
@@ -123,41 +151,33 @@ class WinrsClient(object):
 
     @defer.inlineCallbacks
     def _create_shell(self):
-        tree = yield self._send_request_and_get_etree('create')
-        xpath = './/{%s}Selector[@Name="ShellId"]' % c.XML_NS_WS_MAN
-        shell_id = tree.findtext(xpath).strip()
-        defer.returnValue(shell_id)
+        elem = yield self._send_request('create')
+        defer.returnValue(_find_shell_id(elem))
 
     @defer.inlineCallbacks
     def _run_command(self, shell_id, command_line):
-        command_line_elem = build_command_line_elem(command_line)
-        command_tree = yield self._send_request_and_get_etree(
+        command_line_elem = _build_command_line_elem(command_line)
+        command_elem = yield self._send_request(
             'command', shell_id=shell_id, command_line_elem=command_line_elem)
-        xpath = './/{%s}CommandId' % c.XML_NS_MSRSP
-        command_id = command_tree.findtext(xpath).strip()
+        command_id = _find_command_id(command_elem)
         stdout_parts = []
         stderr_parts = []
         for i in xrange(_MAX_REQUESTS_PER_COMMAND):
-            receive_tree = yield self._send_request_and_get_etree(
+            receive_elem = yield self._send_request(
                 'receive', shell_id=shell_id, command_id=command_id)
-            for stream_name, stream_parts in ('stdout', stdout_parts), \
-                                             ('stderr', stderr_parts):
-                xpath = './/{%s}Stream[@Name="%s"][@CommandId="%s"]' \
-                    % (c.XML_NS_MSRSP, stream_name, command_id)
-                for elem in receive_tree.findall(xpath):
-                    if elem.text is not None:
-                        stream_parts.append(base64.decodestring(elem.text))
-            exit_code_xpath = './/{%s}ExitCode' % c.XML_NS_MSRSP
-            exit_code_text = receive_tree.findtext(exit_code_xpath)
-            if exit_code_text is not None:
-                exit_code = int(exit_code_text.strip())
+            stdout_parts.extend(
+                _find_stream(receive_elem, command_id, 'stdout'))
+            stderr_parts.extend(
+                _find_stream(receive_elem, command_id, 'stderr'))
+            exit_code = _find_exit_code(receive_elem, command_id)
+            if exit_code is not None:
                 break
         else:
             raise Exception("Reached max requests per command.")
         yield send_request(self._url, self._headers, 'signal',
                            shell_id=shell_id, command_id=command_id)
-        stdout = stripped_lines(stdout_parts)
-        stderr = stripped_lines(stderr_parts)
+        stdout = _stripped_lines(stdout_parts)
+        stderr = _stripped_lines(stderr_parts)
         defer.returnValue(CommandResponse(stdout, stderr, exit_code))
 
     @defer.inlineCallbacks

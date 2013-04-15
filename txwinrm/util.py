@@ -12,7 +12,7 @@ import re
 import base64
 import logging
 import httplib
-from xml.etree import cElementTree
+from xml.etree import cElementTree as ET
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol
 from twisted.web.client import Agent
@@ -56,9 +56,9 @@ class _StringProducer(object):
 
 
 def _parse_error_message(xml_str):
-    tree = cElementTree.fromstring(xml_str)
-    text = tree.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Text').strip()
-    detail = tree.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Detail/*/*').strip()
+    elem = ET.fromstring(xml_str)
+    text = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Text').strip()
+    detail = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Detail/*/*').strip()
     return "{0} {1}".format(text, detail)
 
 
