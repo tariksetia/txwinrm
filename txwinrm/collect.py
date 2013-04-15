@@ -8,21 +8,17 @@
 ##############################################################################
 
 from twisted.internet import defer
-from .client import WinrmClientFactory
+from .enumerate import create_winrm_client
 
 
 class WinrmCollectClient(object):
 
-    def __init__(self):
-        self._client_factory = WinrmClientFactory()
-
     @defer.inlineCallbacks
     def do_collect(self, hostname, username, password, wqls):
-        client = self._client_factory.create_winrm_client()
+        client = create_winrm_client(hostname, username, password)
         items = {}
         for wql in wqls:
-            items[wql] = yield client.enumerate(
-                hostname, username, password, wql)
+            items[wql] = yield client.enumerate(wql)
         defer.returnValue(items)
 
 
