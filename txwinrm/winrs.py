@@ -7,9 +7,14 @@
 #
 ##############################################################################
 
+import logging
 from pprint import pprint
 from argparse import ArgumentParser
+from twisted.internet import reactor, defer
 from .shell import WinrsClient
+
+logging.basicConfig()
+log = logging.getLogger('zen.winrm')
 
 
 def parse_args():
@@ -23,12 +28,24 @@ def parse_args():
     return parser.parse_args()
 
 
+@defer.inlineCallbacks
+def tx_main(args):
+    try:
+        client = WinrsClient(args.remote, args.username, args.password)
+        results = yield client.run_commands(
+            [r'typeperf "\Processor(_Total)\% Processor Time" -sc 1'])
+        pprint(results)
+    finally:
+        reactor.stop()
+
+
 def main():
     args = parse_args()
-    client = WinrsClient(args.hostname, args.username, args.password)
-    results = client.run_commands(
-        [r'typeperf "\Processor(_Total)\% Processor Time" -sc 1'])
-    pprint(results)
+    if args.debug:
+        log.setLevel(level=logging.DEBUG)
+        defer.setDebugging(True)
+    reactor.callWhenRunning(tx_main, args)
+    reactor.run()
 
 if __name__ == '__main__':
     main()

@@ -7,8 +7,10 @@
 #
 ##############################################################################
 
+import logging
 import shlex
 import base64
+from pprint import pformat
 from cStringIO import StringIO
 from twisted.internet import defer
 from twisted.internet.protocol import Protocol
@@ -16,6 +18,7 @@ from xml.etree import cElementTree as ET
 from . import constants as c
 from .util import get_url_and_headers, send_request
 
+log = logging.getLogger('zen.winrm')
 _MAX_REQUESTS_PER_COMMAND = 9999
 
 
@@ -37,6 +40,10 @@ class CommandResponse(object):
     @property
     def exit_code(self):
         return self._exit_code
+
+    def __repr__(self):
+        return pformat(dict(
+            stdout=self.stdout, stderr=self.stderr, exit_code=self.exit_code))
 
 
 class _StringProtocol(Protocol):
@@ -70,6 +77,14 @@ def build_command_line_elem(command_line):
     return str_io.getvalue()
 
 
+def stripped_lines(stream_parts):
+    results = []
+    for line in ''.join(stream_parts).splitlines():
+        if line.strip():
+            results.append(line.strip())
+    return results
+
+
 class WinrsClient(object):
 
     def __init__(self, hostname, username, password):
@@ -91,7 +106,7 @@ class WinrsClient(object):
                              .exit_code = <int>
              ...}
         """
-        shell_id = yield self._create_shell(self._url, self._headers)
+        shell_id = yield self._create_shell()
         cmd_responses = []
         for command in commands:
             cmd_response = yield self._run_command(shell_id, command)
@@ -101,7 +116,10 @@ class WinrsClient(object):
 
     @defer.inlineCallbacks
     def _send_request_and_get_etree(self, request_template_name, **kwargs):
-        resp = yield send_request(self._url, self._headers, 'create')
+        log.debug('sending winrs request: {0} {1}'.format(
+            request_template_name, kwargs))
+        resp = yield send_request(
+            self._url, self._headers, request_template_name, **kwargs)
         proto = _StringProtocol()
         resp.deliverBody(proto)
         xml_str = yield proto.d
@@ -131,21 +149,22 @@ class WinrsClient(object):
                 xpath = './/{%s}Stream[@Name="%s"][@CommandId="%s"]' \
                     % (c.XML_NS_MSRSP, stream_name, command_id)
                 for elem in receive_tree.findall(xpath):
-                    stream_parts.append(base64.decodestring(elem.text))
+                    if elem.text is not None:
+                        stream_parts.append(base64.decodestring(elem.text))
             exit_code_xpath = './/{%s}ExitCode' % c.XML_NS_MSRSP
             exit_code_text = receive_tree.findtext(exit_code_xpath)
-            if exit_code_text is None:
+            if exit_code_text is not None:
                 exit_code = int(exit_code_text.strip())
                 break
         else:
             raise Exception("Reached max requests per command.")
         yield send_request(self._url, self._headers, 'signal',
                            shell_id=shell_id, command_id=command_id)
-        stdout = ''.join(stdout_parts).splitlines()
-        stderr = ''.join(stderr_parts).splitlines()
+        stdout = stripped_lines(stdout_parts)
+        stderr = stripped_lines(stderr_parts)
         defer.returnValue(CommandResponse(stdout, stderr, exit_code))
 
     @defer.inlineCallbacks
     def _delete_shell(self, shell_id):
-        yield send_request(self._url, self._headers, 'cmd_delete',
+        yield send_request(self._url, self._headers, 'delete',
                            shell_id=shell_id)
