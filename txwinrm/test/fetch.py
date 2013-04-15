@@ -24,13 +24,12 @@ import errno
 import logging
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol
-from ..client import WinrmClientFactory
-from ..response import create_parser_and_factory, ChainingProtocol, \
-    ParserFeedingProtocol
+from ..enumerate import WinrmClient, create_winrm_client, \
+    create_parser_and_factory, ChainingProtocol, ParserFeedingProtocol
 
 logging.basicConfig(level=logging.INFO)
 
-HOSTNAME = 'milpitas'
+HOSTNAME = 'oakland'
 USERNAME = 'Administrator'
 PASSWORD = 'Z3n0ss'
 
@@ -48,7 +47,7 @@ CIM_CLASSES = [
     'Win32_Process',
     'Win32_PerfRawData_PerfDisk_PhysicalDisk',
     'Win32_PerfRawData_PerfProc_Process',
-    # 'Win32_Product',
+    'Win32_Product',
 ]
 
 
@@ -105,39 +104,38 @@ class WriteXmlToFileHandler(object):
 
 
 @defer.inlineCallbacks
-def do_enumerate(factory, dirname, cim_class, props, query_type):
+def do_enumerate(dirname, cim_class, props, query_type):
     wql = 'select {0} from {1}'.format(props, cim_class)
     handler = WriteXmlToFileHandler(dirname, cim_class, query_type)
-    client = factory.create_winrm_client_with_handler(handler)
-    items = yield client.enumerate(HOSTNAME, USERNAME, PASSWORD, wql)
+    client = WinrmClient(HOSTNAME, USERNAME, PASSWORD, handler)
+    items = yield client.enumerate(wql)
     defer.returnValue(items)
 
 
 @defer.inlineCallbacks
-def get_subdirname(factory):
-    client = factory.create_winrm_client()
+def get_subdirname():
+    client = create_winrm_client(HOSTNAME, USERNAME, PASSWORD)
     wql = 'select Caption from Win32_OperatingSystem'
-    items = yield client.enumerate(HOSTNAME, USERNAME, PASSWORD, wql)
+    items = yield client.enumerate(wql)
     match = re.search(r'(2003|2008|2012)', items[0].Caption)
     defer.returnValue('server_{0}'.format(match.group(1)))
 
 
 @defer.inlineCallbacks
 def fetch():
-    factory = WinrmClientFactory()
-    subdirname = yield get_subdirname(factory)
+    subdirname = yield get_subdirname()
     basedir = os.path.dirname(os.path.abspath(__file__))
     dirname = os.path.join(basedir, 'data', subdirname)
     mkdir_p(dirname)
     for cim_class in CIM_CLASSES:
-        items = yield do_enumerate(factory, dirname, cim_class, '*', 'star')
+        items = yield do_enumerate(dirname, cim_class, '*', 'star')
         required_properties = find_required_properties(items)
         filename = '{0}.properties'.format(cim_class)
         with open(os.path.join(dirname, filename), 'w') as f:
             for prop in required_properties:
                 f.write(prop + '\n')
         props = ','.join(required_properties)
-        yield do_enumerate(factory, dirname, cim_class, props, 'all')
+        yield do_enumerate(dirname, cim_class, props, 'all')
     reactor.stop()
 
 
