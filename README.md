@@ -10,13 +10,11 @@ Current Feature Support
 * HTTP
 * Basic authentication
 * WQL queries
-
+* WinRS
 
 Future Feature Support
 ----------------------
 
-* WinRS
-* PerfMon over WinRS
 * Subscribe to the Windows Event Log
 * Kerberos authentication (domain accounts)
 * NTLM authentication (local accounts)
@@ -49,8 +47,8 @@ Command Prompt as Administrator and execute the following commands
     winrm s winrm/config/service/auth @{Basic="true"}
 
 
-Basic Useage
-------------
+WQL Queries
+-----------
 
 You can pass a single host and query via the command line...
 
@@ -121,3 +119,18 @@ redirect stdin to /dev/null if you want terse output.
 
 The '-d' option increases logging, printing out the XML for all requests and
 responses, along with the HTTP status code.
+
+
+WinRS
+-----
+
+Here is an example of running the Windows typeperf command remotely using the
+winrs script...
+
+    $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Processor(_Total)\% Processor Time" -sc 1' -r gilroy
+    {'exit_code': 0,
+     'stderr': [],
+     'stdout': ['"(PDH-CSV 4.0)","\\\\AMAZONA-Q2R281F\\Processor(_Total)\\% Processor Time"',
+                '"04/15/2013 21:26:55.984","0.000000"',
+                'Exiting, please wait...',
+                'The command completed successfully.']}
