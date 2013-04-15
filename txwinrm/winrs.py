@@ -32,8 +32,7 @@ def parse_args():
 def tx_main(args):
     try:
         client = WinrsClient(args.remote, args.username, args.password)
-        results = yield client.run_commands(
-            [r'typeperf "\Processor(_Total)\% Processor Time" -sc 1'])
+        results = yield client.run_commands([args.command])
         pprint(results)
     finally:
         reactor.stop()
