@@ -18,12 +18,5 @@
         </w:OptionSet>
         <w:OperationTimeout>PT60.000S</w:OperationTimeout>
     </s:Header>
-    <s:Body>
-        <rsp:CommandLine xmlns:rsp="http://schemas.microsoft.com/wbem/wsman/1/windows/shell">
-            <rsp:Command>typeperf</rsp:Command>
-            <rsp:Arguments>"\Processor(_Total)\% Processor Time"</rsp:Arguments>
-            <rsp:Arguments>-sc</rsp:Arguments>
-            <rsp:Arguments>1</rsp:Arguments>
-        </rsp:CommandLine>
-    </s:Body>
+    <s:Body>{command_line_elem}</s:Body>
 </s:Envelope>

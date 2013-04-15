@@ -17,7 +17,8 @@ from argparse import ArgumentParser
 from ConfigParser import RawConfigParser
 from twisted.internet import reactor, defer
 from twisted.internet.error import TimeoutError
-from . import client as client_module
+from .enumerate import create_winrm_client
+from .util import UnauthorizedError
 
 logging.basicConfig()
 log = logging.getLogger('zen.winrm')
@@ -55,11 +56,11 @@ def print_items(items, hostname, wql, include_header):
 
 
 @defer.inlineCallbacks
-def get_remote_process_stats(client, hostname, username, password):
+def get_remote_process_stats(client):
     wql = 'select Name, IDProcess, PercentProcessorTime,' \
           'Timestamp_Sys100NS from Win32_PerfRawData_PerfProc_Process ' \
           'where name like "wmi%"'
-    items = yield client.enumerate(hostname, username, password, wql)
+    items = yield client.enumerate(wql)
     defer.returnValue(items)
 
 
@@ -89,15 +90,16 @@ def calculate_remote_cpu_util(initial_stats, final_stats):
 
 
 @defer.inlineCallbacks
-def get_initial_wmiprvse_stats(client, config):
+def get_initial_wmiprvse_stats(config):
     initial_wmiprvse_stats = {}
     good_hosts = []
     for hostname, (username, password) in config.hosts.iteritems():
         try:
-            initial_wmiprvse_stats[hostname] = yield get_remote_process_stats(
-                client, hostname, username, password)
+            client = create_winrm_client(hostname, username, password)
+            initial_wmiprvse_stats[hostname] = \
+                yield get_remote_process_stats(client)
             good_hosts.append((hostname, username, password))
-        except client_module.Unauthorized:
+        except UnauthorizedError:
             continue
         except TimeoutError:
             continue
@@ -105,13 +107,13 @@ def get_initial_wmiprvse_stats(client, config):
 
 
 @defer.inlineCallbacks
-def print_summary(results, client, config, initial_wmiprvse_stats, good_hosts):
+def print_summary(results, config, initial_wmiprvse_stats, good_hosts):
     global exit_status
     final_wmiprvse_stats = {}
     for hostname, username, password in good_hosts:
+        client = create_winrm_client(hostname, username, password)
         final_wmiprvse_stats[hostname] = \
-            yield get_remote_process_stats(client, hostname,
-                                           username, password)
+            yield get_remote_process_stats(client)
     print >>sys.stderr, '\nSummary:'
     print >>sys.stderr, '  Connected to', len(good_hosts), 'of', \
                         len(config.hosts), 'hosts'
@@ -131,11 +133,11 @@ def print_summary(results, client, config, initial_wmiprvse_stats, good_hosts):
 
 
 @defer.inlineCallbacks
-def send_requests(client, config, do_summary):
+def send_requests(config, do_summary):
     global exit_status
     if do_summary:
         initial_wmiprvse_stats, good_hosts = \
-            yield get_initial_wmiprvse_stats(client, config)
+            yield get_initial_wmiprvse_stats(config)
     else:
         initial_wmiprvse_stats = None
         hostname, (username, password) = config.hosts.items()[0]
@@ -146,8 +148,9 @@ def send_requests(client, config, do_summary):
         return
     ds = []
     for hostname, username, password in good_hosts:
+        client = create_winrm_client(hostname, username, password)
         for wql in config.wqls:
-            d = client.enumerate(hostname, username, password, wql)
+            d = client.enumerate(wql)
             d.addCallback(print_items, hostname, wql, do_summary)
             ds.append(d)
     dl = defer.DeferredList(ds, consumeErrors=True)
@@ -155,8 +158,8 @@ def send_requests(client, config, do_summary):
     @defer.inlineCallbacks
     def dl_callback(results):
         if do_summary:
-            yield print_summary(results, client, config,
-                                initial_wmiprvse_stats, good_hosts)
+            yield print_summary(
+                results, config, initial_wmiprvse_stats, good_hosts)
 
     def stop_reactor(results):
         reactor.stop()
@@ -210,8 +213,6 @@ def main():
     if args.debug:
         log.setLevel(level=logging.DEBUG)
         defer.setDebugging(True)
-    factory = client_module.WinrmClientFactory()
-    client = factory.create_winrm_client()
     if args.config:
         config = parse_config_file(args.config)
         do_summary = True
@@ -222,7 +223,7 @@ def main():
         print >>sys.stderr, "ERROR: You must specify a config file with -c " \
                             "or specify remote, username, password and filter"
         sys.exit(1)
-    reactor.callWhenRunning(send_requests, client, config, do_summary)
+    reactor.callWhenRunning(send_requests, config, do_summary)
     reactor.run()
     sys.exit(exit_status)
 

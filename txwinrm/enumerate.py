@@ -14,13 +14,106 @@ import logging
 from cStringIO import StringIO
 from datetime import datetime
 from collections import deque
+from pprint import pformat
 from xml import sax
 from twisted.internet import defer
 from twisted.internet.protocol import Protocol
 from twisted.web._newclient import ResponseFailed
 from . import constants as c
+from .util import get_url_and_headers, send_request
 
 log = logging.getLogger('zen.winrm')
+_MAX_REQUESTS_PER_ENUMERATION = 9999
+_DEFAULT_RESOURCE_URI = '{0}/*'.format(c.WMICIMV2)
+_MARKER = object()
+
+
+class AddPropertyWithoutItemError(Exception):
+
+    def __init__(self, msg):
+        Exception("It is an illegal state for add_property to be called "
+                  "before the first call to new_item. {0}".format(msg))
+
+
+class Item(object):
+
+    def __repr__(self):
+        return '\n' + pformat(vars(self), indent=4)
+
+
+class ItemsAccumulator(object):
+    """
+    new_item() is called each time a new item is recognized in the
+    enumerate and pull responses. add_property(name, value) is called with
+    each property. All properties added between calls to new_item
+    belong to a single item. It is an illegal state for add_property to
+    be called before the first call to new_item. add_property being called
+    multiple times with the same name within the same item indicates that
+    the property is an array.
+    """
+
+    def __init__(self):
+        self.items = []
+
+    def new_item(self):
+        self.items.append(Item())
+
+    def add_property(self, name, value):
+        if not self.items:
+            raise AddPropertyWithoutItemError(
+                "{0} = {1}".format(name, value))
+        item = self.items[-1]
+        prop = getattr(item, name, _MARKER)
+        if prop is _MARKER:
+            setattr(item, name, value)
+            return
+        if isinstance(prop, list):
+            prop.append(value)
+            return
+        setattr(item, name, [prop, value])
+
+
+class WinrmClient(object):
+
+    def __init__(self, hostname, username, password, handler):
+        self._hostname = hostname
+        self._username = username
+        self._password = password
+        self._handler = handler
+        self._url, self._headers = get_url_and_headers(
+            hostname, username, password)
+
+    @defer.inlineCallbacks
+    def enumerate(self, wql, resource_uri=_DEFAULT_RESOURCE_URI):
+        """
+        Runs a remote WQL query.
+        """
+        request_template_name = 'enumerate'
+        enumeration_context = None
+        accumulator = ItemsAccumulator()
+        try:
+            for i in xrange(_MAX_REQUESTS_PER_ENUMERATION):
+                response = yield send_request(
+                    self._url, self._headers, request_template_name,
+                    resource_uri=resource_uri, wql=wql,
+                    enumeration_context=enumeration_context)
+                log.debug("{0} HTTP status: {1}".format(
+                    self._hostname, response.code))
+                enumeration_context = yield self._handler.handle_response(
+                    response, accumulator)
+                if not enumeration_context:
+                    break
+                request_template_name = 'pull'
+            else:
+                raise Exception("Reached max requests per enumeration.")
+            defer.returnValue(accumulator.items)
+        except Exception, e:
+            log.error('{0} {1}'.format(self._hostname, e))
+            raise
+
+
+def create_winrm_client(hostname, username, password):
+    return WinrmClient(hostname, username, password, SaxResponseHandler())
 
 
 def create_parser_and_factory(accumulator):

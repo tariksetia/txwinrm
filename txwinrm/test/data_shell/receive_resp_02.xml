@@ -1,0 +1,21 @@
+<s:Envelope xml:lang="en-US" xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns:rsp="http://schemas.microsoft.com/wbem/wsman/1/windows/shell" xmlns:p="http://schemas.microsoft.com/wbem/wsman/1/wsman.xsd">
+    <s:Header>
+        <a:Action>http://schemas.microsoft.com/wbem/wsman/1/windows/shell/ReceiveResponse</a:Action>
+        <a:MessageID>uuid:F5DF8EA6-6D46-43FE-AACB-61D817235F0A</a:MessageID>
+        <a:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:To>
+        <a:RelatesTo>uuid:2C7A9C16-DA81-4E08-B4BA-67CF505F9CDB</a:RelatesTo>
+    </s:Header>
+    <s:Body>
+        <rsp:ReceiveResponse>
+            <rsp:Stream Name="stdout" CommandId="75233C4B-10BC-4796-A767-2D95F553DEEC">DQoiMDQvMTEvMjAxMyAxNzo1NTowMi4zMzUi</rsp:Stream>
+            <rsp:Stream Name="stdout" CommandId="75233C4B-10BC-4796-A767-2D95F553DEEC">LCIwLjAyNDM1MyINCkV4aXRpbmcsIHBsZWFzZSB3YWl0Li4uICAgICAgICAgICAgICAgICAgICAgICAgIA0KVGhlIGNvbW1hbmQgY29tcGxldGVkIHN1Y2Nlc3NmdWxseS4NCg0N</rsp:Stream>
+            <rsp:Stream Name="stdout" CommandId="75233C4B-10BC-4796-A767-2D95F553DEEC" End="true">
+            </rsp:Stream>
+            <rsp:Stream Name="stderr" CommandId="75233C4B-10BC-4796-A767-2D95F553DEEC" End="true">
+            </rsp:Stream>
+            <rsp:CommandState CommandId="75233C4B-10BC-4796-A767-2D95F553DEEC" State="http://schemas.microsoft.com/wbem/wsman/1/windows/shell/CommandState/Done">
+                <rsp:ExitCode>0</rsp:ExitCode>
+            </rsp:CommandState>
+        </rsp:ReceiveResponse>
+    </s:Body>
+</s:Envelope>
