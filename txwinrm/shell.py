@@ -95,24 +95,20 @@ class WinrsClient(object):
             hostname, username, password)
 
     @defer.inlineCallbacks
-    def run_commands(self, commands):
+    def run_command(self, command):
         """
         Run commands in a remote shell like the winrs application on Windows.
         Accepts multiple commands. Returns a dictionary with the following
         structure:
-            {<command>: CommandResponse
-                             .stdout = [<stripped-line>, ...]
-                             .stderr = [<stripped-line>, ...]
-                             .exit_code = <int>
-             ...}
+            CommandResponse
+                .stdout = [<non-empty, stripped line>, ...]
+                .stderr = [<non-empty, stripped line>, ...]
+                .exit_code = <int>
         """
         shell_id = yield self._create_shell()
-        cmd_responses = []
-        for command in commands:
-            cmd_response = yield self._run_command(shell_id, command)
-            cmd_responses.append(cmd_response)
+        cmd_response = yield self._run_command(shell_id, command)
         yield self._delete_shell(shell_id)
-        defer.returnValue(cmd_responses)
+        defer.returnValue(cmd_response)
 
     @defer.inlineCallbacks
     def _send_request_and_get_etree(self, request_template_name, **kwargs):

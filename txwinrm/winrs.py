@@ -32,7 +32,7 @@ def parse_args():
 def tx_main(args):
     try:
         client = WinrsClient(args.remote, args.username, args.password)
-        results = yield client.run_commands([args.command])
+        results = yield client.run_command(args.command)
         pprint(results)
     finally:
         reactor.stop()
