@@ -8,7 +8,7 @@
 ##############################################################################
 
 import unittest
-from ..shell import build_command_line_elem
+from ..shell import build_command_line_elem, stripped_lines
 
 EXPECTED_COMMAND_LINE_ELEM = \
     '<rsp:CommandLine ' \
@@ -26,6 +26,15 @@ class TestBuildCommandLineElem(unittest.TestCase):
         actual = build_command_line_elem(
             r'typeperf "\Processor(_Total)\% Processor Time" -sc 1')
         self.assertEqual(actual, EXPECTED_COMMAND_LINE_ELEM)
+
+
+class TestStrippedLines(unittest.TestCase):
+
+    def test_stripped_lines(self):
+        source = ['foo\nbar', 'quux blah\n', '\nblam bloo', 'flim flam floo']
+        actual = stripped_lines(source)
+        expected = ['foo', 'barquux blah', 'blam blooflim flam floo']
+        self.assertEqual(actual, expected)
 
 if __name__ == '__main__':
     unittest.main()
