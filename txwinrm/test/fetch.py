@@ -100,7 +100,7 @@ class WriteXmlToFileHandler(object):
                                    ParserFeedingProtocol(parser)])
         response.deliverBody(reader)
         yield reader.d
-        defer.returnValue(factory.enumeration_context)
+        defer.returnValue((factory.enumeration_context, factory.items))
 
 
 @defer.inlineCallbacks
