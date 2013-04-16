@@ -14,12 +14,13 @@ This testing requires real Windows machines that are setup manually.
 import os
 import re
 import unittest
+import base64
 from itertools import izip
 from xml import sax
 from datetime import datetime
 from ..enumerate import create_parser_and_factory, get_datetime, \
     ItemsContentHandler, ChainingContentHandler, TextBufferingContentHandler, \
-    ItemsAccumulator, AddPropertyWithoutItemError
+    ItemsAccumulator, AddPropertyWithoutItemError, create_winrm_client, Item
 
 MAX_RESPONSE_FILES = 999
 
@@ -182,8 +183,8 @@ class TestWinrm(unittest.TestCase):
         data_by_os_version = get_data_by_os_version()
         for os_version, data_by_cim_class in data_by_os_version.iteritems():
             for cim_class, data in data_by_cim_class.iteritems():
-                star_items = get_items(data['star'])
-                all_items = get_items(data['all'])
+                star_items = self._get_items(data['star'])
+                all_items = self._get_items(data['all'])
                 self.assertEqual(len(star_items), len(all_items))
                 for star_item, all_item in izip(star_items, all_items):
                     are_items_equal(
@@ -193,14 +194,25 @@ class TestWinrm(unittest.TestCase):
                         for prop in data['properties']:
                             self.assertIn(prop, vars(item))
 
+    def _get_items(self, xml_texts):
+        enumeration_contexts, items = \
+            get_enumeration_contexts_and_items(xml_texts)
+        self.assertEqual(len(enumeration_contexts), len(xml_texts))
+        for enumeration_context in enumeration_contexts[:-1]:
+            self.assertIsNotNone(enumeration_context)
+        self.assertIsNone(enumeration_contexts[-1])
+        return items
 
-def get_items(xml_texts):
+
+def get_enumeration_contexts_and_items(xml_texts):
+    enumeration_contexts = []
     items = []
     for xml_text in xml_texts:
         parser, factory = create_parser_and_factory()
         parser.feed(xml_text)
+        enumeration_contexts.append(factory.enumeration_context)
         items.extend(factory.items)
-    return items
+    return enumeration_contexts, items
 
 
 def chop_none_terminated_list(xs):
@@ -317,6 +329,15 @@ ARRAY_XML_FRAGMENT = """
 <Roles>Server_NT</Roles>
 """
 
+TOO_DEEP = """
+<foo>
+<bar>
+<quux>
+</quux>
+</bar>
+</foo>
+"""
+
 
 def parse_xml_str(xml_str):
     parser = sax.make_parser()
@@ -389,6 +410,11 @@ class TestDataType(unittest.TestCase):
         data = [(array_1, prop, expected), (array_2, prop, expected)]
         self._do_test_of_prop_parsing(data)
 
+    def test_too_deep(self):
+        xml_str = CIM_CLASS_FMT.format(cim_class="Win32_Blah",
+                                       properties=TOO_DEEP)
+        self.assertRaises(Exception, parse_xml_str, xml_str)
+
 
 class TestItemsAccumulator(unittest.TestCase):
 
@@ -396,6 +422,32 @@ class TestItemsAccumulator(unittest.TestCase):
         self.assertRaises(AddPropertyWithoutItemError,
                           ItemsAccumulator().add_property, "foo", "bar")
 
+
+class TestWinrmClient(unittest.TestCase):
+
+    def test_constructor(self):
+        hostname = 'foo'
+        username = 'bar'
+        password = 'quux'
+        client = create_winrm_client(hostname, username, password)
+        self.assertEqual(client._hostname, hostname)
+        self.assertEqual(client._username, username)
+        self.assertEqual(client._password, password)
+        self.assertIsNotNone(client._handler)
+        self.assertEqual(client._url, 'http://{0}:5985/wsman'.format(hostname))
+        self.assertEqual(client._headers.getRawHeaders('content-type'),
+                         ['application/soap+xml;charset=UTF-8'])
+        authstr = "{0}:{1}".format(username, password)
+        auth = 'Basic {0}'.format(base64.encodestring(authstr).strip())
+        self.assertEqual(client._headers.getRawHeaders('authorization'),
+                         [auth])
+
+
+class TestItem(unittest.TestCase):
+
+    def test_repr(self):
+        item = Item()
+        self.assertEqual(repr(item), '\n{   }')
 
 if __name__ == '__main__':
     unittest.main()

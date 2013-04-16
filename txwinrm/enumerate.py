@@ -244,6 +244,11 @@ class DispatchingContentHandler(sax.handler.ContentHandler):
         return self._subhandler_factory.get_handler_for(tag), tag
 
 
+def is_end_of_sequence(tag):
+    return tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_END_OF_SEQUENCE) \
+        or tag.matches(c.XML_NS_WS_MAN, c.WSENUM_END_OF_SEQUENCE)
+
+
 class EnvelopeHandlerFactory(object):
 
     def __init__(self, text_buffer):
@@ -261,7 +266,7 @@ class EnvelopeHandlerFactory(object):
     def get_handler_for(self, tag):
         handler = None
         if tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_ENUMERATION_CONTEXT) \
-                or tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_END_OF_SEQUENCE):
+                or is_end_of_sequence(tag):
             handler = self._enumerate_handler
         elif tag.matches(c.XML_NS_WS_MAN, c.WSENUM_ITEMS) \
                 or tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_ITEMS):
@@ -287,7 +292,7 @@ class EnumerateContentHandler(sax.handler.ContentHandler):
         tag = create_tag_comparer(name)
         if tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_ENUMERATION_CONTEXT):
             self._enumeration_context = self._text_buffer.text
-        if tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_END_OF_SEQUENCE):
+        if is_end_of_sequence(tag):
             self._end_of_sequence = True
 
 
