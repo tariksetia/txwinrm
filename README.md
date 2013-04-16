@@ -134,3 +134,25 @@ winrs script...
                 '"04/15/2013 21:26:55.984","0.000000"',
                 'Exiting, please wait...',
                 'The command completed successfully.']}
+
+
+Unit Test Coverage
+------------------
+
+As of Apr 16, 2013...
+
+    $ txwinrm/test/cover
+    ........................
+    ----------------------------------------------------------------------
+    Ran 24 tests in 7.910s
+
+    OK
+    Name                Stmts   Miss  Cover
+    ---------------------------------------
+    txwinrm/__init__        0      0   100%
+    txwinrm/constants      18      0   100%
+    txwinrm/enumerate     259     46    82%
+    txwinrm/shell         114     34    70%
+    txwinrm/util           89     24    73%
+    ---------------------------------------
+    TOTAL                 480    104    78%
