@@ -31,46 +31,9 @@ _MARKER = object()
 class AddPropertyWithoutItemError(Exception):
 
     def __init__(self, msg):
-        Exception("It is an illegal state for add_property to be called "
-                  "before the first call to new_item. {0}".format(msg))
-
-
-class Item(object):
-
-    def __repr__(self):
-        return '\n' + pformat(vars(self), indent=4)
-
-
-class ItemsAccumulator(object):
-    """
-    new_item() is called each time a new item is recognized in the
-    enumerate and pull responses. add_property(name, value) is called with
-    each property. All properties added between calls to new_item
-    belong to a single item. It is an illegal state for add_property to
-    be called before the first call to new_item. add_property being called
-    multiple times with the same name within the same item indicates that
-    the property is an array.
-    """
-
-    def __init__(self):
-        self.items = []
-
-    def new_item(self):
-        self.items.append(Item())
-
-    def add_property(self, name, value):
-        if not self.items:
-            raise AddPropertyWithoutItemError(
-                "{0} = {1}".format(name, value))
-        item = self.items[-1]
-        prop = getattr(item, name, _MARKER)
-        if prop is _MARKER:
-            setattr(item, name, value)
-            return
-        if isinstance(prop, list):
-            prop.append(value)
-            return
-        setattr(item, name, [prop, value])
+        Exception.__init__(self, "It is an illegal state for add_property to "
+                                 "be called before the first call to new_item."
+                                 " {0}".format(msg))
 
 
 class WinrmClient(object):
@@ -90,7 +53,7 @@ class WinrmClient(object):
         """
         request_template_name = 'enumerate'
         enumeration_context = None
-        accumulator = ItemsAccumulator()
+        items = []
         try:
             for i in xrange(_MAX_REQUESTS_PER_ENUMERATION):
                 log.debug('{0} "{1}" {2}'.format(
@@ -101,28 +64,29 @@ class WinrmClient(object):
                     enumeration_context=enumeration_context)
                 log.debug("{0} HTTP status: {1}".format(
                     self._hostname, response.code))
-                enumeration_context = yield self._handler.handle_response(
-                    response, accumulator)
+                enumeration_context, new_items = \
+                    yield self._handler.handle_response(response)
+                items.extend(new_items)
                 if not enumeration_context:
                     break
                 request_template_name = 'pull'
             else:
                 raise Exception("Reached max requests per enumeration.")
-            defer.returnValue(accumulator.items)
         except Exception, e:
             log.error('{0} {1}'.format(self._hostname, e))
             raise
+        defer.returnValue(items)
 
 
 def create_winrm_client(hostname, username, password):
     return WinrmClient(hostname, username, password, SaxResponseHandler())
 
 
-def create_parser_and_factory(accumulator):
+def create_parser_and_factory():
     parser = sax.make_parser()
     parser.setFeature(sax.handler.feature_namespaces, True)
     text_buffer = TextBufferingContentHandler()
-    factory = EnvelopeHandlerFactory(text_buffer, accumulator)
+    factory = EnvelopeHandlerFactory(text_buffer)
     content_handler = ChainingContentHandler([
         text_buffer,
         DispatchingContentHandler(factory)])
@@ -133,12 +97,12 @@ def create_parser_and_factory(accumulator):
 class SaxResponseHandler(object):
 
     @defer.inlineCallbacks
-    def handle_response(self, response, accumulator):
-        parser, factory = create_parser_and_factory(accumulator)
-        reader = ParserFeedingProtocol(parser)
-        response.deliverBody(reader)
-        yield reader.d
-        defer.returnValue(factory.enumeration_context)
+    def handle_response(self, response):
+        parser, factory = create_parser_and_factory()
+        proto = ParserFeedingProtocol(parser)
+        response.deliverBody(proto)
+        yield proto.d
+        defer.returnValue(factory.enumeration_context, factory.items)
 
 
 def safe_lower_equals(left, right):
@@ -290,22 +254,26 @@ class DispatchingContentHandler(sax.handler.ContentHandler):
 
 class EnvelopeHandlerFactory(object):
 
-    def __init__(self, text_buffer, accumulator):
-        self._enumerate = EnumerateContentHandler(text_buffer)
-        self._items = ItemsContentHandler(text_buffer, accumulator)
+    def __init__(self, text_buffer):
+        self._enumerate_handler = EnumerateContentHandler(text_buffer)
+        self._items_handler = ItemsContentHandler(text_buffer)
 
     @property
     def enumeration_context(self):
-        return self._enumerate.enumeration_context
+        return self._enumerate_handler.enumeration_context
+
+    @property
+    def items(self):
+        return self._items_handler.items
 
     def get_handler_for(self, tag):
         handler = None
         if tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_ENUMERATION_CONTEXT) \
                 or tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_END_OF_SEQUENCE):
-            handler = self._enumerate
+            handler = self._enumerate_handler
         elif tag.matches(c.XML_NS_WS_MAN, c.WSENUM_ITEMS) \
                 or tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_ITEMS):
-            handler = self._items
+            handler = self._items_handler
         log.debug('EnvelopeHandlerFactory get_handler_for {0} {1}'
                   .format(tag, handler))
         return handler
@@ -331,13 +299,59 @@ class EnumerateContentHandler(sax.handler.ContentHandler):
             self._end_of_sequence = True
 
 
+class Item(object):
+
+    def __repr__(self):
+        return '\n' + pformat(vars(self), indent=4)
+
+
+class ItemsAccumulator(object):
+    """
+    new_item() is called each time a new item is recognized in the
+    enumerate and pull responses. add_property(name, value) is called with
+    each property. All properties added between calls to new_item
+    belong to a single item. It is an illegal state for add_property to
+    be called before the first call to new_item. add_property being called
+    multiple times with the same name within the same item indicates that
+    the property is an array.
+    """
+
+    def __init__(self):
+        self._items = []
+
+    @property
+    def items(self):
+        return self._items
+
+    def new_item(self):
+        self._items.append(Item())
+
+    def add_property(self, name, value):
+        if not self._items:
+            raise AddPropertyWithoutItemError(
+                "{0} = {1}".format(name, value))
+        item = self._items[-1]
+        prop = getattr(item, name, _MARKER)
+        if prop is _MARKER:
+            setattr(item, name, value)
+            return
+        if isinstance(prop, list):
+            prop.append(value)
+            return
+        setattr(item, name, [prop, value])
+
+
 class ItemsContentHandler(sax.handler.ContentHandler):
 
-    def __init__(self, text_buffer, accumulator):
+    def __init__(self, text_buffer):
         self._text_buffer = text_buffer
-        self._accumulator = accumulator
+        self._accumulator = ItemsAccumulator()
         self._tag_stack = deque()
         self._value = None
+
+    @property
+    def items(self):
+        return self._accumulator.items
 
     def startElementNS(self, name, qname, attrs):
         log.debug('ItemsContentHandler startElementNS {0} v="{1}" t="{2}" {3}'

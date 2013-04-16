@@ -14,8 +14,8 @@ This testing requires real Windows machines that are setup manually.
 import os
 import re
 import unittest
+from itertools import izip
 from xml import sax
-from pprint import pformat
 from datetime import datetime
 from ..enumerate import create_parser_and_factory, get_datetime, \
     ItemsContentHandler, ChainingContentHandler, TextBufferingContentHandler
@@ -130,73 +130,29 @@ INCOMPARABLE_PROPERTIES = dict(
         'Timestamp_Sys100NS'])
 
 
-class Item(object):
-
-    def __init__(self, cim_class, props):
-        self.cim_class = cim_class
-        self.props = props
-
-    def __eq__(self, other):
-        retval = True
-        for name in vars(other):
-            if name not in vars(self):
-                if name not in self.props:
-                    continue
-                print "self missing", name
-                return False
-        for name, value in vars(self).iteritems():
-            if name not in vars(other):
-                if name not in self.props:
-                    continue
-                print "other missing", name
-                return False
-            if vars(other)[name] != value:
-                if self.cim_class in INCOMPARABLE_PROPERTIES \
-                        and name in INCOMPARABLE_PROPERTIES[self.cim_class]:
-                    continue
-                print '{0} {1}: "{2}" {3} != "{4}" {5}' \
-                      .format(self.cim_class, name, self.Name, value,
-                              other.Name, vars(other)[name])
-                retval = False
-        return retval
-
-    def __repr__(self):
-        return '\n' + pformat(vars(self), indent=4)
-
-
-class AddPropertyWithoutItemError(Exception):
-
-    def __init__(self, msg):
-        Exception("It is an illegal state for add_property to be called "
-                  "before the first call to new_item. {0}".format(msg))
-
-
-_MARKER = object()
-
-
-class MyTestAccumulator(object):
-
-    def __init__(self, cim_class, props):
-        self.cim_class = cim_class
-        self.props = props
-        self.items = []
-
-    def new_item(self):
-        self.items.append(Item(self.cim_class, self.props))
-
-    def add_property(self, name, value):
-        if not self.items:
-            raise AddPropertyWithoutItemError(
-                "{0} = {1}".format(name, value))
-        item = self.items[-1]
-        prop = getattr(item, name, _MARKER)
-        if prop is _MARKER:
-            setattr(item, name, value)
-            return
-        if isinstance(prop, list):
-            prop.append(value)
-            return
-        setattr(item, name, [prop, value])
+def are_items_equal(left, right, cim_class, props):
+    retval = True
+    for name in vars(right):
+        if name not in vars(left):
+            if name not in props:
+                continue
+            print "left missing", name
+            return False
+    for name, value in vars(left).iteritems():
+        if name not in vars(right):
+            if name not in props:
+                continue
+            print "right missing", name
+            return False
+        if vars(right)[name] != value:
+            if cim_class in INCOMPARABLE_PROPERTIES \
+                    and name in INCOMPARABLE_PROPERTIES[cim_class]:
+                continue
+            print '{0} {1}: "{2}" {3} != "{4}" {5}' \
+                  .format(cim_class, name, left.Name, value,
+                          right.Name, vars(right)[name])
+            retval = False
+    return retval
 
 
 class TestWinrm(unittest.TestCase):
@@ -225,24 +181,24 @@ class TestWinrm(unittest.TestCase):
         data_by_os_version = get_data_by_os_version()
         for os_version, data_by_cim_class in data_by_os_version.iteritems():
             for cim_class, data in data_by_cim_class.iteritems():
-                star_items = get_items(cim_class, data['properties'],
-                                       data['star'])
-                all_items = get_items(cim_class, data['properties'],
-                                      data['all'])
-                self.assertEqual(star_items, all_items)
+                star_items = get_items(data['star'])
+                all_items = get_items(data['all'])
+                self.assertEqual(len(star_items), len(all_items))
+                for star_item, all_item in izip(star_items, all_items):
+                    are_items_equal(
+                        star_item, all_item, cim_class, data['properties'])
                 for items in star_items, all_items:
                     for item in items:
                         for prop in data['properties']:
                             self.assertIn(prop, vars(item))
 
 
-def get_items(cim_class, props, xml_texts):
+def get_items(xml_texts):
     items = []
     for xml_text in xml_texts:
-        accumulator = MyTestAccumulator(cim_class, props)
-        parser, factory = create_parser_and_factory(accumulator)
+        parser, factory = create_parser_and_factory()
         parser.feed(xml_text)
-        items.extend(accumulator.items)
+        items.extend(factory.items)
     return items
 
 
@@ -361,14 +317,15 @@ ARRAY_XML_FRAGMENT = """
 """
 
 
-def parse_xml_str(xml_str, accumulator):
+def parse_xml_str(xml_str):
     parser = sax.make_parser()
     parser.setFeature(sax.handler.feature_namespaces, True)
     text_buffer = TextBufferingContentHandler()
-    items_handler = ItemsContentHandler(text_buffer, accumulator)
+    items_handler = ItemsContentHandler(text_buffer)
     content_handler = ChainingContentHandler([text_buffer, items_handler])
     parser.setContentHandler(content_handler)
     parser.feed(xml_str)
+    return items_handler.items
 
 
 class TestDataType(unittest.TestCase):
@@ -391,10 +348,9 @@ class TestDataType(unittest.TestCase):
 
     def _do_test_of_prop_parsing(self, data):
         for xml_str, prop, expected in data:
-            accumulator = MyTestAccumulator('foo', 'bar')
-            parse_xml_str(xml_str, accumulator)
-            self.assertEqual(len(accumulator.items), 1)
-            actual = getattr(accumulator.items[0], prop)
+            items = parse_xml_str(xml_str)
+            self.assertEqual(len(items), 1)
+            actual = getattr(items[0], prop)
             self.assertEqual(actual, expected)
 
     def test_items_with_datetime(self):
