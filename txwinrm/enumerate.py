@@ -94,7 +94,7 @@ class SaxResponseHandler(object):
         proto = ParserFeedingProtocol(parser)
         response.deliverBody(proto)
         yield proto.d
-        defer.returnValue(factory.enumeration_context, factory.items)
+        defer.returnValue((factory.enumeration_context, factory.items))
 
 
 def safe_lower_equals(left, right):
