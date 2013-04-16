@@ -18,7 +18,8 @@ from itertools import izip
 from xml import sax
 from datetime import datetime
 from ..enumerate import create_parser_and_factory, get_datetime, \
-    ItemsContentHandler, ChainingContentHandler, TextBufferingContentHandler
+    ItemsContentHandler, ChainingContentHandler, TextBufferingContentHandler, \
+    ItemsAccumulator, AddPropertyWithoutItemError
 
 MAX_RESPONSE_FILES = 999
 
@@ -387,6 +388,14 @@ class TestDataType(unittest.TestCase):
         expected = ["LM_Workstation", "LM_Server", "NT", "Server_NT"]
         data = [(array_1, prop, expected), (array_2, prop, expected)]
         self._do_test_of_prop_parsing(data)
+
+
+class TestItemsAccumulator(unittest.TestCase):
+
+    def test_add_property_without_item(self):
+        self.assertRaises(AddPropertyWithoutItemError,
+                          ItemsAccumulator().add_property, "foo", "bar")
+
 
 if __name__ == '__main__':
     unittest.main()

@@ -28,14 +28,6 @@ _DEFAULT_RESOURCE_URI = '{0}/*'.format(c.WMICIMV2)
 _MARKER = object()
 
 
-class AddPropertyWithoutItemError(Exception):
-
-    def __init__(self, msg):
-        Exception.__init__(self, "It is an illegal state for add_property to "
-                                 "be called before the first call to new_item."
-                                 " {0}".format(msg))
-
-
 class WinrmClient(object):
 
     def __init__(self, hostname, username, password, handler):
@@ -297,6 +289,14 @@ class EnumerateContentHandler(sax.handler.ContentHandler):
             self._enumeration_context = self._text_buffer.text
         if tag.matches(c.XML_NS_ENUMERATION, c.WSENUM_END_OF_SEQUENCE):
             self._end_of_sequence = True
+
+
+class AddPropertyWithoutItemError(Exception):
+
+    def __init__(self, msg):
+        Exception.__init__(self, "It is an illegal state for add_property to "
+                                 "be called before the first call to new_item."
+                                 " {0}".format(msg))
 
 
 class Item(object):
