@@ -9,9 +9,11 @@
 
 import os
 import unittest
+import base64
 from xml.etree import cElementTree as ET
 from ..shell import _build_command_line_elem, _stripped_lines, \
-    _find_shell_id, _find_command_id, _find_stream, _find_exit_code
+    _find_shell_id, _find_command_id, _find_stream, _find_exit_code, \
+    CommandResponse, WinrsClient
 
 DATADIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "data_shell")
@@ -102,6 +104,40 @@ class TestXmlParsing(unittest.TestCase):
         actual = _find_exit_code(elem, COMMAND_ID)
         expected = 0
         self.assertEqual(actual, expected)
+
+
+class TestCommandResponse(unittest.TestCase):
+
+    def test_command_response(self):
+        stdout = 'foo'
+        stderr = 'bar'
+        exit_code = 'quux'
+        resp = CommandResponse(stdout, stderr, exit_code)
+        self.assertEqual(resp.stdout, stdout)
+        self.assertEqual(resp.stderr, stderr)
+        self.assertEqual(resp.exit_code, exit_code)
+        self.assertEqual(
+            repr(resp),
+            "{'exit_code': 'quux', 'stderr': 'bar', 'stdout': 'foo'}")
+
+
+class TestWinrsClient(unittest.TestCase):
+
+    def test_constructor(self):
+        hostname = 'foo'
+        username = 'bar'
+        password = 'quux'
+        client = WinrsClient(hostname, username, password)
+        self.assertEqual(client._hostname, hostname)
+        self.assertEqual(client._username, username)
+        self.assertEqual(client._password, password)
+        self.assertEqual(client._url, 'http://{0}:5985/wsman'.format(hostname))
+        self.assertEqual(client._headers.getRawHeaders('content-type'),
+                         ['application/soap+xml;charset=UTF-8'])
+        authstr = "{0}:{1}".format(username, password)
+        auth = 'Basic {0}'.format(base64.encodestring(authstr).strip())
+        self.assertEqual(client._headers.getRawHeaders('authorization'),
+                         [auth])
 
 if __name__ == '__main__':
     unittest.main()

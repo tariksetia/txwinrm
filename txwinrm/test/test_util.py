@@ -13,7 +13,8 @@ This testing requires real Windows machines that are setup manually.
 
 import os
 import unittest
-from ..util import _parse_error_message
+from ..util import _parse_error_message, _get_agent, _StringProducer, \
+    get_request_template
 
 
 class TestErrorReader(unittest.TestCase):
@@ -32,6 +33,32 @@ class TestErrorReader(unittest.TestCase):
             'Close existing operations for this user, or raise the quota ' \
             'for this user.'
         self.assertEqual(actual, expected)
+
+
+class TestAgent(unittest.TestCase):
+
+    def test_get_agent(self):
+        agent = _get_agent()
+        self.assertIsNotNone(agent)
+
+
+class TestStringProducer(unittest.TestCase):
+
+    def test_constructor(self):
+        producer = _StringProducer('foo')
+        self.assertEqual(producer._body, 'foo')
+        self.assertEqual(producer.length, len('foo'))
+        self.assertIsNone(producer.pauseProducing())
+        self.assertIsNone(producer.stopProducing())
+
+
+class TestRequestTemplate(unittest.TestCase):
+
+    def test_get_request_template(self):
+        templ = get_request_template('enumerate')
+        self.assertIn(
+            'http://schemas.xmlsoap.org/ws/2004/09/enumeration/Enumerate',
+            templ)
 
 if __name__ == '__main__':
     unittest.main()

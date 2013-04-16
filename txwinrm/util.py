@@ -45,14 +45,31 @@ def _get_agent():
 
 
 class _StringProducer(object):
+    """
+    The length attribute must be a non-negative integer or the constant
+    twisted.web.iweb.UNKNOWN_LENGTH. If the length is known, it will be used to
+    specify the value for the Content-Length header in the request. If the
+    length is unknown the attribute should be set to UNKNOWN_LENGTH. Since more
+    servers support Content-Length, if a length can be provided it should be.
+    """
 
     def __init__(self, body):
-        self.body = body
+        self._body = body
         self.length = len(body)
 
     def startProducing(self, consumer):
-        consumer.write(self.body)
+        """
+        This method is used to associate a consumer with the producer. It
+        should return a Deferred which fires when all data has been produced.
+        """
+        consumer.write(self._body)
         return defer.succeed(None)
+
+    def pauseProducing(self):
+        pass
+
+    def stopProducing(self):
+        pass
 
 
 def _parse_error_message(xml_str):
