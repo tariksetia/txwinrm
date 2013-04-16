@@ -222,7 +222,6 @@ class TestWinrm(unittest.TestCase):
         each know host along with a 'select *' query and verifies that the
         items match.
         """
-        self.fail()
         data_by_os_version = get_data_by_os_version()
         for os_version, data_by_cim_class in data_by_os_version.iteritems():
             for cim_class, data in data_by_cim_class.iteritems():
