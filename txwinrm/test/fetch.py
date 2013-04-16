@@ -90,12 +90,12 @@ class WriteXmlToFileHandler(object):
         self._response_count = 0
 
     @defer.inlineCallbacks
-    def handle_response(self, response, accumulator):
+    def handle_response(self, response):
         filename = '{0}_{1}_{2:03}.xml'.format(self._cim_class, self._suffix,
                                                self._response_count)
         self._response_count += 1
         f = open(os.path.join(self._dirname, filename), 'w')
-        parser, factory = create_parser_and_factory(accumulator)
+        parser, factory = create_parser_and_factory()
         reader = ChainingProtocol([WriteXmlToFileProtocol(f),
                                    ParserFeedingProtocol(parser)])
         response.deliverBody(reader)
