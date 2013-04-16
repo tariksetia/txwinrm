@@ -20,7 +20,8 @@ from xml import sax
 from datetime import datetime
 from ..enumerate import create_parser_and_factory, get_datetime, \
     ItemsContentHandler, ChainingContentHandler, TextBufferingContentHandler, \
-    ItemsAccumulator, AddPropertyWithoutItemError, create_winrm_client, Item
+    ItemsAccumulator, AddPropertyWithoutItemError, create_winrm_client, Item, \
+    TagStackStateError, TagComparer
 
 MAX_RESPONSE_FILES = 999
 
@@ -414,6 +415,23 @@ class TestDataType(unittest.TestCase):
         xml_str = CIM_CLASS_FMT.format(cim_class="Win32_Blah",
                                        properties=TOO_DEEP)
         self.assertRaises(Exception, parse_xml_str, xml_str)
+
+    def test_tag_stack_state_error(self):
+        parser = sax.make_parser()
+        parser.setFeature(sax.handler.feature_namespaces, True)
+        text_buffer = TextBufferingContentHandler()
+        items_handler = ItemsContentHandler(text_buffer)
+        content_handler = ChainingContentHandler([text_buffer, items_handler])
+        parser.setContentHandler(content_handler)
+        xml1 = '<n:Items ' \
+               'xmlns:n="http://schemas.xmlsoap.org/ws/2004/09/enumeration" ' \
+               'xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">' \
+               '<w:XmlFragment>'
+        parser.feed(xml1)
+        tag = TagComparer(None, 'foo')
+        items_handler._tag_stack.append(tag)
+        xml2 = "</w:XmlFragment></n:Items>"
+        self.assertRaises(TagStackStateError, parser.feed, xml2)
 
 
 class TestItemsAccumulator(unittest.TestCase):

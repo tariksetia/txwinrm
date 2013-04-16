@@ -346,6 +346,10 @@ class ItemsAccumulator(object):
         setattr(item, name, [prop, value])
 
 
+class TagStackStateError(Exception):
+    pass
+
+
 class ItemsContentHandler(sax.handler.ContentHandler):
 
     def __init__(self, text_buffer):
@@ -381,8 +385,9 @@ class ItemsContentHandler(sax.handler.ContentHandler):
         tag = create_tag_comparer(name)
         popped_tag = self._tag_stack.pop()
         if not popped_tag.matches(tag.uri, tag.localname):
-            raise Exception("End of {0} when expecting {1}"
-                            .format(tag.localname, popped_tag.localname))
+            raise TagStackStateError(
+                "End of {0} when expecting {1}"
+                .format(tag.localname, popped_tag.localname))
         log.debug("ItemsContentHandler endElementNS tag_stack: {0}"
                   .format(self._tag_stack))
         if len(self._tag_stack) == 2:
