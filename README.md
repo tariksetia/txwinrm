@@ -141,6 +141,7 @@ Feedback
 
 To provide feedback on txwinrm start a discussion on the zenoss-windows forum on community.zenoss.org <http://community.zenoss.org/community/forums/zenoss-windows>.
 
+Zenoss uses JIRA to track bugs. Create an account and file a bug, or browse reported bugs. <http://jira.zenoss.com/jira/secure/Dashboard.jspa>
 
 Unit Test Coverage
 ------------------
