@@ -1,0 +1,32 @@
+#! /bin/sh
+
+(
+    set -x
+    flake8 txwinrm
+) || (
+    echo
+    echo "ERROR: Code does not conform to PEP-8"
+    exit 1
+) || exit 1
+
+echo
+
+(
+    set -x
+    txwinrm/test/cover --fail-under=78
+) || (
+    echo
+    echo "ERROR: Less than 78% unit test coverage"
+    exit 1
+) || exit 1
+
+echo
+
+(
+    set -x
+    txwinrm/test/complex
+) || (
+    echo
+    echo "\nERROR: Code is too complex"
+    exit 1
+) || exit 1
