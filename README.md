@@ -136,6 +136,12 @@ winrs script...
                 'The command completed successfully.']}
 
 
+Feedback
+--------
+
+To provide feedback on txwinrm start a discussion on the zenoss-windows forum on community.zenoss.org <http://community.zenoss.org/community/forums/zenoss-windows>.
+
+
 Unit Test Coverage
 ------------------
 
