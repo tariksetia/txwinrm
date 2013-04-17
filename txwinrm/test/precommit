@@ -27,6 +27,6 @@ echo
     txwinrm/test/complex
 ) || (
     echo
-    echo "\nERROR: Code is too complex"
+    echo "ERROR: Code is too complex"
     exit 1
 ) || exit 1

@@ -133,27 +133,39 @@ INCOMPARABLE_PROPERTIES = dict(
         'Timestamp_Sys100NS'])
 
 
-def are_items_equal(left, right, cim_class, props):
+def _is_missing(item, other_props, required_props, item_label):
+    for prop in other_props:
+        if prop not in vars(item):
+            if prop not in required_props:
+                continue
+            print item_label, "missing", prop
+            return True
+    return False
+
+
+def _are_values_equal(left, right, prop, cim_class):
+    if prop not in vars(left) or prop not in vars(right):
+        return True
+    l_value = vars(left).get(prop)
+    r_value = vars(right).get(prop)
+    retval = l_value == r_value
+    if not retval:
+        print '{0} {1}: "{2}" {3} != "{4}" {5}' .format(
+            cim_class, prop, left.Name, l_value, right.Name, r_value)
+    return retval
+
+
+def are_items_equal(left, right, cim_class, required_props):
     retval = True
-    for name in vars(right):
-        if name not in vars(left):
-            if name not in props:
-                continue
-            print "left missing", name
-            return False
-    for name, value in vars(left).iteritems():
-        if name not in vars(right):
-            if name not in props:
-                continue
-            print "right missing", name
-            return False
-        if vars(right)[name] != value:
-            if cim_class in INCOMPARABLE_PROPERTIES \
-                    and name in INCOMPARABLE_PROPERTIES[cim_class]:
-                continue
-            print '{0} {1}: "{2}" {3} != "{4}" {5}' \
-                  .format(cim_class, name, left.Name, value,
-                          right.Name, vars(right)[name])
+    if _is_missing(left, vars(right).keys(), required_props, 'left'):
+        return False
+    if _is_missing(right, vars(left).keys(), required_props, 'right'):
+        return False
+    for prop in vars(left):
+        if cim_class in INCOMPARABLE_PROPERTIES \
+                and prop in INCOMPARABLE_PROPERTIES[cim_class]:
+            continue
+        if not _are_values_equal(left, right, prop, cim_class):
             retval = False
     return retval
 
@@ -220,6 +232,49 @@ def chop_none_terminated_list(xs):
     return xs[:xs.index(None)]
 
 
+def _get_cim_class_and_query_type(filename):
+    if '_star_' in filename:
+        cim_class = filename[:-len('_star_NNN.xml')]
+        query_type = 'star'
+    elif '_all_' in filename:
+        cim_class = filename[:-len('_all_NNN.xml')]
+        query_type = 'all'
+    else:
+        raise Exception('unknown query type for file {0}'
+                        .format(filename))
+    return cim_class, query_type
+
+
+def _get_index(filename):
+    i = int(re.search(r'(\d{3})', filename).group(1))
+    if i > MAX_RESPONSE_FILES:
+        raise Exception('Too many response files: {0} Max is {1}'
+                        .format(filename, MAX_RESPONSE_FILES))
+    return i
+
+
+def _get_data_by_cim_class(root, filenames):
+    data_by_cim_class = {}
+    for filename in filenames:
+        with open(os.path.join(root, filename)) as f:
+            text = f.read()
+        if filename.endswith('.properties'):
+            cim_class = filename.split('.')[0]
+            if cim_class not in data_by_cim_class:
+                data_by_cim_class[cim_class] = {}
+            data_by_cim_class[cim_class]['properties'] = text.splitlines()
+            continue
+        cim_class, query_type = _get_cim_class_and_query_type(filename)
+        if cim_class not in data_by_cim_class:
+            data_by_cim_class[cim_class] = {}
+        if query_type not in data_by_cim_class[cim_class]:
+            data_by_cim_class[cim_class][query_type] = \
+                [None] * MAX_RESPONSE_FILES
+        index = _get_index(filename)
+        data_by_cim_class[cim_class][query_type][index] = text
+    return data_by_cim_class
+
+
 def get_data_by_os_version():
     """
     {'server_2008': {'Win32_ComputerSystem': {'all': [<XML texts>]
@@ -233,37 +288,9 @@ def get_data_by_os_version():
         if root == datadir:
             continue
         os_version = os.path.split(root)[-1]
-        data_by_os_version[os_version] = data_by_cim_class = {}
-        for filename in filenames:
-            with open(os.path.join(root, filename)) as f:
-                text = f.read()
-                if filename.endswith('.properties'):
-                    cim_class = filename.split('.')[0]
-                    if cim_class not in data_by_cim_class:
-                        data_by_cim_class[cim_class] = {}
-                    data_by_cim_class[cim_class]['properties'] = \
-                        text.splitlines()
-                    continue
-                if '_star_' in filename:
-                    query_type = 'star'
-                    cim_class = filename[:-len('_star_NNN.xml')]
-                elif '_all_' in filename:
-                    query_type = 'all'
-                    cim_class = filename[:-len('_all_NNN.xml')]
-                else:
-                    raise Exception('unknown query type for file {0}'
-                                    .format(filename))
-                if cim_class not in data_by_cim_class:
-                    data_by_cim_class[cim_class] = {}
-                if query_type not in data_by_cim_class[cim_class]:
-                    data_by_cim_class[cim_class][query_type] = \
-                        [None] * MAX_RESPONSE_FILES
-                i = int(re.search(r'(\d{3})', filename).group(1))
-                if i > MAX_RESPONSE_FILES:
-                    raise Exception('Too many response files: {0} Max is {1}'
-                                    .format(filename, MAX_RESPONSE_FILES))
-                data_by_cim_class[cim_class][query_type][i] = text
-        for cim_class, data in data_by_cim_class.iteritems():
+        data_by_os_version[os_version] = \
+            _get_data_by_cim_class(root, filenames)
+        for cim_class, data in data_by_os_version[os_version].iteritems():
             data['star'] = chop_none_terminated_list(data['star'])
             data['all'] = chop_none_terminated_list(data['all'])
 
