@@ -7,10 +7,11 @@
 #
 ##############################################################################
 
+import sys
 import logging
 from pprint import pprint
 from argparse import ArgumentParser
-from twisted.internet import reactor, defer
+from twisted.internet import reactor, defer, task
 from .shell import RemoteShell, WinrsClient
 
 logging.basicConfig()
@@ -29,15 +30,36 @@ def parse_args():
 
 
 @defer.inlineCallbacks
+def get_output(shell):
+    print 'Received:'
+    stdout, stderr = yield task.deferLater(
+        reactor, 2, shell.get_output)
+    for line in stdout:
+        print ' ', line
+    for line in stderr:
+        print >>sys.stderr, ' ', line
+
+
+@defer.inlineCallbacks
 def tx_main(args):
+    command = args.command
     try:
         shell = RemoteShell(args.remote, args.username, args.password)
+        print 'Connecting.\n'
         yield shell.create()
-        results = yield shell.run_command(args.command)
-        pprint(results)
-        results = yield shell.run_command(args.command)
-        pprint(results)
-        yield shell.delete()
+        yield get_output(shell)
+        print '\nSending:\n ', command, '\n'
+        yield shell.run_command(command)
+        yield get_output(shell)
+        print '\nSending:', command, '\n'
+        yield shell.run_command(command)
+        yield get_output(shell)
+        response = yield shell.delete()
+        for line in response.stdout:
+            print ' ', line
+        for line in response.stderr:
+            print >>sys.stderr, ' ', line
+        print "\nExit code:", response.exit_code
     finally:
         if reactor.running:
             reactor.stop()

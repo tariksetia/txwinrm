@@ -196,6 +196,9 @@ class RemoteShell(object):
             hostname, username, password)
         self._shell_id = None
         self._command_id = None
+        self._deferred_receiving = None
+        self._stdout_parts = []
+        self._stderr_parts = []
 
     def __del__(self):
         if self._shell_id is not None:
@@ -216,36 +219,36 @@ class RemoteShell(object):
             'command', shell_id=self._shell_id,
             command_line_elem=command_line_elem)
         self._command_id = _find_command_id(command_elem)
+        self._deferred_receiving = self._start_receiving()
 
     @defer.inlineCallbacks
     def run_command(self, command):
-        base64_encoded_command = base64.encodestring(command)
+        base64_encoded_command = base64.encodestring('{0}\r\n'.format(command))
         yield self._send_request('send', shell_id=self._shell_id,
                                  command_id=self._command_id,
                                  base64_encoded_command=base64_encoded_command)
-        stdout_parts = []
-        stderr_parts = []
-        receive_elem = yield self._send_request(
-            'receive', shell_id=self._shell_id,
-            command_id=self._command_id)
-        stdout_parts.extend(
-            _find_stream(receive_elem, self._command_id, 'stdout'))
-        stderr_parts.extend(
-            _find_stream(receive_elem, self._command_id, 'stderr'))
-        stdout = _stripped_lines(stdout_parts)
-        stderr = _stripped_lines(stderr_parts)
-        defer.returnValue(CommandResponse(stdout, stderr, None))
+
+    def get_output(self):
+        stdout = _stripped_lines(self._stdout_parts)
+        stderr = _stripped_lines(self._stderr_parts)
+        del self._stdout_parts[:]
+        del self._stderr_parts[:]
+        return stdout, stderr
 
     @defer.inlineCallbacks
     def delete(self):
         if self._shell_id is None:
             return
+        self.run_command('exit')
+        exit_code = yield self._deferred_receiving
         yield send_request(self._url, self._headers, 'signal',
                            shell_id=self._shell_id,
                            command_id=self._command_id)
         yield send_request(self._url, self._headers, 'delete',
                            shell_id=self._shell_id)
         self._shell_id = None
+        stdout, stderr = self.get_output()
+        defer.returnValue(CommandResponse(stdout, stderr, exit_code))
 
     @defer.inlineCallbacks
     def _send_request(self, request_template_name, **kwargs):
@@ -257,3 +260,17 @@ class RemoteShell(object):
         resp.deliverBody(proto)
         xml_str = yield proto.d
         defer.returnValue(ET.fromstring(xml_str))
+
+    @defer.inlineCallbacks
+    def _start_receiving(self):
+        exit_code = None
+        while exit_code is None:
+            receive_elem = yield self._send_request(
+                'receive', shell_id=self._shell_id,
+                command_id=self._command_id)
+            self._stdout_parts.extend(
+                _find_stream(receive_elem, self._command_id, 'stdout'))
+            self._stderr_parts.extend(
+                _find_stream(receive_elem, self._command_id, 'stderr'))
+            exit_code = _find_exit_code(receive_elem, self._command_id)
+        defer.returnValue(exit_code)
