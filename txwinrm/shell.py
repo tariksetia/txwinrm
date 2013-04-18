@@ -7,12 +7,13 @@
 #
 ##############################################################################
 
+import re
 import logging
 import shlex
 import base64
 from pprint import pformat
 from cStringIO import StringIO
-from twisted.internet import defer
+from twisted.internet import reactor, defer, task
 from twisted.internet.protocol import Protocol
 from xml.etree import cElementTree as ET
 from . import constants as c
@@ -188,21 +189,20 @@ class WinrsClient(object):
 
 class RemoteShell(object):
 
-    def __init__(self, hostname, username, password):
+    _PROMPT_PATTERN = re.compile(r'[A-Z]:\\.*>$')
+    _READ_DELAY = 0.2
+
+    def __init__(self, hostname, username, password, include_exit_codes=False):
         self._hostname = hostname
         self._username = username
         self._password = password
+        self._include_exit_codes = include_exit_codes
         self._url, self._headers = get_url_and_headers(
             hostname, username, password)
-        self._shell_id = None
-        self._command_id = None
-        self._deferred_receiving = None
-        self._stdout_parts = []
-        self._stderr_parts = []
+        self._reset()
 
     def __del__(self):
-        if self._shell_id is not None:
-            self.delete()
+        self.delete()
 
     @defer.inlineCallbacks
     def create(self):
@@ -220,20 +220,27 @@ class RemoteShell(object):
             command_line_elem=command_line_elem)
         self._command_id = _find_command_id(command_elem)
         self._deferred_receiving = self._start_receiving()
+        stdout = []
+        stderr = []
+        while self._prompt is None:
+            out, err = yield task.deferLater(
+                reactor, self._READ_DELAY, self._get_output)
+            stdout.extend(out)
+            stderr.extend(err)
+            for line in out:
+                if self._PROMPT_PATTERN.match(line):
+                    self._prompt = line
+        defer.returnValue(CommandResponse(stdout, stderr, None))
 
     @defer.inlineCallbacks
     def run_command(self, command):
-        base64_encoded_command = base64.encodestring('{0}\r\n'.format(command))
-        yield self._send_request('send', shell_id=self._shell_id,
-                                 command_id=self._command_id,
-                                 base64_encoded_command=base64_encoded_command)
-
-    def get_output(self):
-        stdout = _stripped_lines(self._stdout_parts)
-        stderr = _stripped_lines(self._stderr_parts)
-        del self._stdout_parts[:]
-        del self._stderr_parts[:]
-        return stdout, stderr
+        stdout, stderr = yield self._run_command(command)
+        if self._include_exit_codes:
+            o2, e2 = yield self._run_command('echo %errorlevel%')
+            exit_code = o2[0]
+        else:
+            exit_code = None
+        defer.returnValue(CommandResponse(stdout, stderr, exit_code))
 
     @defer.inlineCallbacks
     def delete(self):
@@ -246,9 +253,17 @@ class RemoteShell(object):
                            command_id=self._command_id)
         yield send_request(self._url, self._headers, 'delete',
                            shell_id=self._shell_id)
-        self._shell_id = None
-        stdout, stderr = self.get_output()
+        stdout, stderr = self._get_output()
+        self._reset()
         defer.returnValue(CommandResponse(stdout, stderr, exit_code))
+
+    def _reset(self):
+        self._shell_id = None
+        self._command_id = None
+        self._deferred_receiving = None
+        self._prompt = None
+        self._stdout_parts = []
+        self._stderr_parts = []
 
     @defer.inlineCallbacks
     def _send_request(self, request_template_name, **kwargs):
@@ -265,7 +280,8 @@ class RemoteShell(object):
     def _start_receiving(self):
         exit_code = None
         while exit_code is None:
-            receive_elem = yield self._send_request(
+            receive_elem = yield task.deferLater(
+                reactor, self._READ_DELAY, self._send_request,
                 'receive', shell_id=self._shell_id,
                 command_id=self._command_id)
             self._stdout_parts.extend(
@@ -274,3 +290,32 @@ class RemoteShell(object):
                 _find_stream(receive_elem, self._command_id, 'stderr'))
             exit_code = _find_exit_code(receive_elem, self._command_id)
         defer.returnValue(exit_code)
+
+    def _get_output(self):
+        stdout = _stripped_lines(self._stdout_parts)
+        stderr = _stripped_lines(self._stderr_parts)
+        del self._stdout_parts[:]
+        del self._stderr_parts[:]
+        return stdout, stderr
+
+    @defer.inlineCallbacks
+    def _run_command(self, command):
+        base64_encoded_command = base64.encodestring('{0}\r\n'.format(command))
+        yield self._send_request('send', shell_id=self._shell_id,
+                                 command_id=self._command_id,
+                                 base64_encoded_command=base64_encoded_command)
+        stdout = []
+        stderr = []
+        for i in xrange(_MAX_REQUESTS_PER_COMMAND):
+            out, err = yield task.deferLater(
+                reactor, self._READ_DELAY, self._get_output)
+            stderr.extend(err)
+            if not out:
+                continue
+            stdout.extend(out[:-1])
+            if out[-1] == self._prompt:
+                break
+            stdout.append(out[-1])
+        else:
+            raise Exception("Reached max requests per command.")
+        defer.returnValue((stdout, stderr))
