@@ -29,11 +29,7 @@ def parse_args():
     return parser.parse_args()
 
 
-@defer.inlineCallbacks
-def get_output(shell):
-    print 'Received:'
-    stdout, stderr = yield task.deferLater(
-        reactor, 2, shell.get_output)
+def print_output(stdout, stderr):
     for line in stdout:
         print ' ', line
     for line in stderr:
@@ -41,25 +37,32 @@ def get_output(shell):
 
 
 @defer.inlineCallbacks
+def get_output(shell, remote):
+    stdout, stderr = yield task.deferLater(
+        reactor, 2, shell.get_output)
+    print 'Received from {0}:'.format(remote)
+    print_output(stdout, stderr)
+
+
+@defer.inlineCallbacks
 def tx_main(args):
+    remote = args.remote
     command = args.command
     try:
-        shell = RemoteShell(args.remote, args.username, args.password)
-        print 'Connecting.\n'
+        shell = RemoteShell(remote, args.username, args.password)
+        print 'Connecting to {0}.\n'.format(remote)
         yield shell.create()
-        yield get_output(shell)
-        print '\nSending:\n ', command, '\n'
-        yield shell.run_command(command)
-        yield get_output(shell)
-        print '\nSending:', command, '\n'
-        yield shell.run_command(command)
-        yield get_output(shell)
+        yield get_output(shell, remote)
+
+        for i in range(10):
+            print '\n', 'Sending to {0}:\n  {1}\n'.format(remote, command)
+            yield shell.run_command(command)
+            yield get_output(shell, remote)
+
         response = yield shell.delete()
-        for line in response.stdout:
-            print ' ', line
-        for line in response.stderr:
-            print >>sys.stderr, ' ', line
-        print "\nExit code:", response.exit_code
+        print_output(response.stdout, response.stderr)
+        print "\nExit code from {0}: {1}".format(
+            remote, response.exit_code)
     finally:
         if reactor.running:
             reactor.stop()
