@@ -123,7 +123,7 @@ class WinrsClient(object):
             hostname, username, password)
 
     @defer.inlineCallbacks
-    def run_command(self, command):
+    def run_command(self, command_line):
         """
         Run commands in a remote shell like the winrs application on Windows.
         Accepts multiple commands. Returns a dictionary with the following
@@ -134,7 +134,7 @@ class WinrsClient(object):
                 .exit_code = <int>
         """
         shell_id = yield self._create_shell()
-        cmd_response = yield self._run_command(shell_id, command)
+        cmd_response = yield self._run_command(shell_id, command_line)
         yield self._delete_shell(shell_id)
         defer.returnValue(cmd_response)
 
@@ -184,3 +184,76 @@ class WinrsClient(object):
     def _delete_shell(self, shell_id):
         yield send_request(self._url, self._headers, 'delete',
                            shell_id=shell_id)
+
+
+class RemoteShell(object):
+
+    def __init__(self, hostname, username, password):
+        self._hostname = hostname
+        self._username = username
+        self._password = password
+        self._url, self._headers = get_url_and_headers(
+            hostname, username, password)
+        self._shell_id = None
+        self._command_id = None
+
+    def __del__(self):
+        if self._shell_id is not None:
+            self.delete()
+
+    @defer.inlineCallbacks
+    def create(self):
+        if self._shell_id is not None:
+            self.delete()
+        log.debug("RemoteShell create: sending create request")
+        elem = yield self._send_request('create')
+        self._shell_id = _find_shell_id(elem)
+        command_line_elem = _build_command_line_elem('cmd')
+        log.debug('RemoteShell create: sending command request (shell_id={0}, '
+                  'command_line_elem={1})'.format(
+                  self._shell_id, command_line_elem))
+        command_elem = yield self._send_request(
+            'command', shell_id=self._shell_id,
+            command_line_elem=command_line_elem)
+        self._command_id = _find_command_id(command_elem)
+
+    @defer.inlineCallbacks
+    def run_command(self, command):
+        base64_encoded_command = base64.encodestring(command)
+        yield self._send_request('send', shell_id=self._shell_id,
+                                 command_id=self._command_id,
+                                 base64_encoded_command=base64_encoded_command)
+        stdout_parts = []
+        stderr_parts = []
+        receive_elem = yield self._send_request(
+            'receive', shell_id=self._shell_id,
+            command_id=self._command_id)
+        stdout_parts.extend(
+            _find_stream(receive_elem, self._command_id, 'stdout'))
+        stderr_parts.extend(
+            _find_stream(receive_elem, self._command_id, 'stderr'))
+        stdout = _stripped_lines(stdout_parts)
+        stderr = _stripped_lines(stderr_parts)
+        defer.returnValue(CommandResponse(stdout, stderr, None))
+
+    @defer.inlineCallbacks
+    def delete(self):
+        if self._shell_id is None:
+            return
+        yield send_request(self._url, self._headers, 'signal',
+                           shell_id=self._shell_id,
+                           command_id=self._command_id)
+        yield send_request(self._url, self._headers, 'delete',
+                           shell_id=self._shell_id)
+        self._shell_id = None
+
+    @defer.inlineCallbacks
+    def _send_request(self, request_template_name, **kwargs):
+        log.debug('sending winrs request: {0} {1}'.format(
+            request_template_name, kwargs))
+        resp = yield send_request(
+            self._url, self._headers, request_template_name, **kwargs)
+        proto = _StringProtocol()
+        resp.deliverBody(proto)
+        xml_str = yield proto.d
+        defer.returnValue(ET.fromstring(xml_str))

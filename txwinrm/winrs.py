@@ -11,7 +11,7 @@ import logging
 from pprint import pprint
 from argparse import ArgumentParser
 from twisted.internet import reactor, defer
-from .shell import WinrsClient
+from .shell import RemoteShell, WinrsClient
 
 logging.basicConfig()
 log = logging.getLogger('zen.winrm')
@@ -30,6 +30,21 @@ def parse_args():
 
 @defer.inlineCallbacks
 def tx_main(args):
+    try:
+        shell = RemoteShell(args.remote, args.username, args.password)
+        yield shell.create()
+        results = yield shell.run_command(args.command)
+        pprint(results)
+        results = yield shell.run_command(args.command)
+        pprint(results)
+        yield shell.delete()
+    finally:
+        if reactor.running:
+            reactor.stop()
+
+
+@defer.inlineCallbacks
+def tx_main2(args):
     try:
         client = WinrsClient(args.remote, args.username, args.password)
         results = yield client.run_command(args.command)

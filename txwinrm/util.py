@@ -22,6 +22,9 @@ from . import constants as c
 log = logging.getLogger('zen.winrm')
 _XML_WHITESPACE_PATTERN = re.compile(r'>\s+<')
 _AGENT = None
+_MAX_PERSISTENT_PER_HOST = 2
+_CACHED_CONNECTION_TIMEOUT = 240
+_CONNECT_TIMEOUT = 5
 
 
 def _get_agent():
@@ -31,14 +34,14 @@ def _get_agent():
             # HTTPConnectionPool has been present since Twisted version 12.1
             from twisted.web.client import HTTPConnectionPool
             pool = HTTPConnectionPool(reactor, persistent=True)
-            pool.maxPersistentPerHost = c.MAX_PERSISTENT_PER_HOST
-            pool.cachedConnectionTimeout = c.CACHED_CONNECTION_TIMEOUT
+            pool.maxPersistentPerHost = _MAX_PERSISTENT_PER_HOST
+            pool.cachedConnectionTimeout = _CACHED_CONNECTION_TIMEOUT
             _AGENT = Agent(
-                reactor, connectTimeout=c.CONNECT_TIMEOUT, pool=pool)
+                reactor, connectTimeout=_CONNECT_TIMEOUT, pool=pool)
         except ImportError:
             try:
                 # connectTimeout first showed up in Twisted version 11.1
-                _AGENT = Agent(reactor, connectTimeout=c.CONNECT_TIMEOUT)
+                _AGENT = Agent(reactor, connectTimeout=_CONNECT_TIMEOUT)
             except TypeError:
                 _AGENT = Agent(reactor)
     return _AGENT
@@ -108,7 +111,7 @@ def _build_request_templates():
     _REQUEST_TEMPLATES = {}
     basedir = os.path.dirname(os.path.abspath(__file__))
     for name in 'enumerate', 'pull', \
-                'create', 'command', 'receive', 'signal', 'delete':
+                'create', 'command', 'send', 'receive', 'signal', 'delete':
         filename = '{0}.xml'.format(name)
         path = os.path.join(basedir, 'request', filename)
         with open(path) as f:
@@ -135,8 +138,8 @@ def get_url_and_headers(hostname, username, password):
 def send_request(url, headers, request_template_name, **kwargs):
     request = get_request_template(request_template_name).format(**kwargs)
     log.debug(request)
-    body = _StringProducer(request)
-    response = yield _get_agent().request('POST', url, headers, body)
+    body_producer = _StringProducer(request)
+    response = yield _get_agent().request('POST', url, headers, body_producer)
     if response.code == httplib.UNAUTHORIZED:
         raise UnauthorizedError("unauthorized, check username and password.")
     elif response.code != httplib.OK:
