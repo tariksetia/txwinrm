@@ -204,6 +204,10 @@ class RemoteShell(object):
     def __del__(self):
         self.delete()
 
+    @property
+    def prompt(self):
+        return self._prompt
+
     @defer.inlineCallbacks
     def create(self):
         if self._shell_id is not None:
@@ -225,11 +229,12 @@ class RemoteShell(object):
         while self._prompt is None:
             out, err = yield task.deferLater(
                 reactor, self._READ_DELAY, self._get_output)
-            stdout.extend(out)
             stderr.extend(err)
             for line in out:
                 if self._PROMPT_PATTERN.match(line):
                     self._prompt = line
+                else:
+                    stdout.append(line)
         defer.returnValue(CommandResponse(stdout, stderr, None))
 
     @defer.inlineCallbacks

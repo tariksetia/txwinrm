@@ -8,10 +8,11 @@
 ##############################################################################
 
 import sys
+import cmd
 import logging
 from pprint import pprint
 from argparse import ArgumentParser
-from twisted.internet import reactor, defer
+from twisted.internet import reactor, defer, threads
 from .shell import RemoteShell, WinrsClient
 
 logging.basicConfig()
@@ -36,8 +37,49 @@ def print_output(stdout, stderr):
         print >>sys.stderr, ' ', line
 
 
+class WinrsCmd(cmd.Cmd):
+
+    def __init__(self, shell):
+        cmd.Cmd.__init__(self)
+        self._shell = shell
+        self.prompt = shell.prompt
+
+    def default(self, line):
+        response = threads.blockingCallFromThread(
+            reactor, self._run_command, line)
+        print '\n'.join(response.stdout)
+        print >>sys.stderr, '\n'.join(response.stderr)
+
+    @defer.inlineCallbacks
+    def _run_command(self, line):
+        response = yield self._shell.run_command(line)
+        defer.returnValue(response)
+
+    def do_exit(self, line):
+        reactor.callFromThread(self._exit)
+        return True
+
+    @defer.inlineCallbacks
+    def _exit(self):
+        yield self._shell.delete()
+        reactor.stop()
+
+    def postloop(self):
+        print
+
+
 @defer.inlineCallbacks
 def tx_main(args):
+    remote = args.remote
+    shell = RemoteShell(remote, args.username, args.password)
+    response = yield shell.create()
+    intro = '\n'.join(response.stdout)
+    winrs_cmd = WinrsCmd(shell)
+    reactor.callInThread(winrs_cmd.cmdloop, intro)
+
+
+@defer.inlineCallbacks
+def tx_main2(args):
     remote = args.remote
     command = args.command
     try:
@@ -60,7 +102,7 @@ def tx_main(args):
 
 
 @defer.inlineCallbacks
-def tx_main2(args):
+def tx_main3(args):
     try:
         client = WinrsClient(args.remote, args.username, args.password)
         results = yield client.run_command(args.command)
