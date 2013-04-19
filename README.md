@@ -32,8 +32,8 @@ Install this application into your Python site libraries with:
 Dependencies
 ------------
 
-Python 2.7
-Twisted 11.0 or later (utilizes HTTP connection pools with Twisted 12.1 or later)
+* Python 2.7
+* Twisted 11.0 or later (utilizes HTTP connection pools with Twisted 12.1 or later)
 
 
 Configuring the Target Windows Machines
@@ -125,16 +125,87 @@ responses, along with the HTTP status code.
 WinRS
 -----
 
-Here is an example of running the Windows typeperf command remotely using the
-winrs script...
+The winrs program has four modes of operation:
 
-    $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Processor(_Total)\% Processor Time" -sc 1' -r gilroy
+* --single-shot or -s: Execute a single command and return its output
+* --long-running or -l: Execute a single long-running command like 'typeperf -si 1' and check the output periodically
+* --interactive or -i: Execute many commands in an interactive command prompt on the remote host
+* --batch or -b: Opens a command prompt on the remote system and executes a list of commands (actually right now it executes one command twice as a proof-of-concept)
+
+
+An example of single-shot
+
+    $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -sc 1' -r oakland -s
     {'exit_code': 0,
      'stderr': [],
-     'stdout': ['"(PDH-CSV 4.0)","\\\\AMAZONA-Q2R281F\\Processor(_Total)\\% Processor Time"',
-                '"04/15/2013 21:26:55.984","0.000000"',
+     'stdout': ['"(PDH-CSV 4.0)","\\\\AMAZONA-SDFU7B1\\Memory\\Pages/sec","\\\\AMAZONA-SDFU7B1\\PhysicalDisk(_Total)\\Avg. Disk Queue Length","\\\\AMAZONA-SDFU7B1\\Processor(_Total)\\% Processor Time"',
+                '"04/19/2013 21:43:48.823","0.000000","0.000000","0.005660"',
                 'Exiting, please wait...',
                 'The command completed successfully.']}
+
+
+An example of long-running
+
+    $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -si 1' -r oakland -l
+      "(PDH-CSV 4.0)","\\AMAZONA-SDFU7B1\Memory\Pages/sec","\\AMAZONA-SDFU7B1\PhysicalDisk(_Total)\Avg. Disk Queue Length","\\AMAZONA-SDFU7B1\Processor(_Total)\% Processor Time"
+      "04/19/2013 21:43:10.603","0.000000","0.000000","18.462005"
+      "04/19/2013 21:43:11.617","0.000000","0.000000","0.000464"
+      "04/19/2013 21:43:12.631","0.000000","0.000000","1.538423"
+      "04/19/2013 21:43:13.645","0.000000","0.000000","0.000197"
+
+
+An example of interactive
+
+    $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -si 1' -r oakland -i
+    Microsoft Windows [Version 6.2.9200]
+    (c) 2012 Microsoft Corporation. All rights reserved.
+    C:\Users\Default>dir
+    Volume in drive C has no label.
+    Volume Serial Number is 5E71-6BA3
+    Directory of C:\Users\Default
+    02/22/2013  03:42 AM    <DIR>          Contacts
+    02/22/2013  03:42 AM    <DIR>          Desktop
+    02/22/2013  03:42 AM    <DIR>          Documents
+    02/22/2013  03:42 AM    <DIR>          Downloads
+    02/22/2013  03:42 AM    <DIR>          Favorites
+    02/22/2013  03:42 AM    <DIR>          Links
+    02/22/2013  03:42 AM    <DIR>          Music
+    02/22/2013  03:42 AM    <DIR>          Pictures
+    02/22/2013  03:42 AM    <DIR>          Saved Games
+    02/22/2013  03:42 AM    <DIR>          Searches
+    02/22/2013  03:42 AM    <DIR>          Videos
+    0 File(s)              0 bytes
+    11 Dir(s)   7,905,038,336 bytes free
+
+    C:\Users\Default>exit
+
+
+An example of batch
+
+    $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -sc 1' -r oakland -b
+    Creating shell on oakland.
+
+    Sending to oakland:
+      typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -sc 1
+
+    Received from oakland:
+      "(PDH-CSV 4.0)","\\AMAZONA-SDFU7B1\Memory\Pages/sec","\\AMAZONA-SDFU7B1\PhysicalDisk(_Total)\Avg. Disk Queue Length","\\AMAZONA-SDFU7B1\Processor(_Total)\% Processor Time"
+      "04/19/2013 21:43:39.198","0.000000","0.000000","0.000483"
+      Exiting, please wait...
+      The command completed successfully.
+
+    Sending to oakland:
+      typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -sc 1
+
+    Received from oakland:
+      "(PDH-CSV 4.0)","\\AMAZONA-SDFU7B1\Memory\Pages/sec","\\AMAZONA-SDFU7B1\PhysicalDisk(_Total)\Avg. Disk Queue Length","\\AMAZONA-SDFU7B1\Processor(_Total)\% Processor Time"
+      "04/19/2013 21:43:41.054","0.000000","0.000000","0.000700"
+      Exiting, please wait...
+      The command completed successfully.
+
+    Deleted shell on oakland.
+
+    Exit code of shell on oakland: 0
 
 
 Feedback
