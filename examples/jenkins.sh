@@ -22,5 +22,5 @@ python setup.py sdist
 python -m unittest discover
 flake8 txwinrm
 coverage run --include="txwinrm/*" --omit="txwinrm/test/*" -m unittest discover
-coverage report --fail-under=78
+coverage report --fail-under=60
 txwinrm/test/complex
