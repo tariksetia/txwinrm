@@ -175,16 +175,97 @@ class WinrsClient(object):
                 break
         else:
             raise Exception("Reached max requests per command.")
-        yield send_request(self._url, self._headers, 'signal',
-                           shell_id=shell_id, command_id=command_id)
+        yield self._send_request('signal',
+                                 shell_id=shell_id,
+                                 command_id=command_id,
+                                 signal_code=c.SHELL_SIGNAL_TERMINATE)
         stdout = _stripped_lines(stdout_parts)
         stderr = _stripped_lines(stderr_parts)
         defer.returnValue(CommandResponse(stdout, stderr, exit_code))
 
     @defer.inlineCallbacks
     def _delete_shell(self, shell_id):
-        yield send_request(self._url, self._headers, 'delete',
-                           shell_id=shell_id)
+        yield self._send_request('delete', shell_id=shell_id)
+
+
+class LongRunningCommand(object):
+
+    _READ_DELAY = 0.2
+
+    def __init__(self, hostname, username, password, include_exit_codes=False):
+        self._hostname = hostname
+        self._username = username
+        self._password = password
+        self._url, self._headers = get_url_and_headers(
+            hostname, username, password)
+        self._shell_id = None
+        self._command_id = None
+        self._deferred_receiving = None
+        self._stdout_parts = []
+        self._stderr_parts = []
+
+    @defer.inlineCallbacks
+    def run_command(self, command_line):
+        log.debug("LongRunningCommand run_command: {0}".format(command_line))
+        elem = yield self._send_request('create')
+        self._shell_id = _find_shell_id(elem)
+        command_line_elem = _build_command_line_elem(command_line)
+        log.debug('LongRunningCommand run_command: sending command request '
+                  '(shell_id={0}, command_line_elem={1})'.format(
+                  self._shell_id, command_line_elem))
+        command_elem = yield self._send_request(
+            'command', shell_id=self._shell_id,
+            command_line_elem=command_line_elem)
+        self._command_id = _find_command_id(command_elem)
+        self._deferred_receiving = self._start_receiving()
+
+    def get_output(self):
+        stdout = _stripped_lines(self._stdout_parts)
+        stderr = _stripped_lines(self._stderr_parts)
+        del self._stdout_parts[:]
+        del self._stderr_parts[:]
+        return stdout, stderr
+
+    @defer.inlineCallbacks
+    def exit(self):
+        yield self._send_request('signal',
+                                 shell_id=self._shell_id,
+                                 command_id=self._command_id,
+                                 signal_code=c.SHELL_SIGNAL_CTRL_C)
+        exit_code = yield self._deferred_receiving
+        yield self._send_request('signal',
+                                 shell_id=self._shell_id,
+                                 command_id=self._command_id,
+                                 signal_code=c.SHELL_SIGNAL_TERMINATE)
+        yield self._send_request('delete', shell_id=self._shell_id)
+        stdout, stderr = self.get_output()
+        defer.returnValue(CommandResponse(stdout, stderr, exit_code))
+
+    @defer.inlineCallbacks
+    def _send_request(self, request_template_name, **kwargs):
+        log.debug('sending winrs request: {0} {1}'.format(
+            request_template_name, kwargs))
+        resp = yield send_request(
+            self._url, self._headers, request_template_name, **kwargs)
+        proto = _StringProtocol()
+        resp.deliverBody(proto)
+        xml_str = yield proto.d
+        defer.returnValue(ET.fromstring(xml_str))
+
+    @defer.inlineCallbacks
+    def _start_receiving(self):
+        exit_code = None
+        while exit_code is None:
+            receive_elem = yield task.deferLater(
+                reactor, self._READ_DELAY, self._send_request,
+                'receive', shell_id=self._shell_id,
+                command_id=self._command_id)
+            self._stdout_parts.extend(
+                _find_stream(receive_elem, self._command_id, 'stdout'))
+            self._stderr_parts.extend(
+                _find_stream(receive_elem, self._command_id, 'stderr'))
+            exit_code = _find_exit_code(receive_elem, self._command_id)
+        defer.returnValue(exit_code)
 
 
 class RemoteShell(object):
@@ -253,11 +334,11 @@ class RemoteShell(object):
             return
         self.run_command('exit')
         exit_code = yield self._deferred_receiving
-        yield send_request(self._url, self._headers, 'signal',
-                           shell_id=self._shell_id,
-                           command_id=self._command_id)
-        yield send_request(self._url, self._headers, 'delete',
-                           shell_id=self._shell_id)
+        yield self._send_request('signal',
+                                 shell_id=self._shell_id,
+                                 command_id=self._command_id,
+                                 signal_code=c.SHELL_SIGNAL_TERMINATE)
+        yield self._send_request('delete', shell_id=self._shell_id)
         stdout, stderr = self._get_output()
         self._reset()
         defer.returnValue(CommandResponse(stdout, stderr, exit_code))
@@ -306,7 +387,8 @@ class RemoteShell(object):
     @defer.inlineCallbacks
     def _run_command(self, command):
         base64_encoded_command = base64.encodestring('{0}\r\n'.format(command))
-        yield self._send_request('send', shell_id=self._shell_id,
+        yield self._send_request('send',
+                                 shell_id=self._shell_id,
                                  command_id=self._command_id,
                                  base64_encoded_command=base64_encoded_command)
         stdout = []

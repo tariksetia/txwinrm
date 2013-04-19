@@ -24,3 +24,8 @@ WSENUM_END_OF_SEQUENCE = 'EndOfSequence'
 WSENUM_ITEMS = 'Items'
 
 WMICIMV2 = 'http://schemas.microsoft.com/wbem/wsman/1/wmi/root/cimv2'
+
+SHELL_SIGNAL_TERMINATE = \
+    'http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/terminate'
+SHELL_SIGNAL_CTRL_C = \
+    'http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/ctrl_c'

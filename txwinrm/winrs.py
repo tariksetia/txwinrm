@@ -12,22 +12,11 @@ import cmd
 import logging
 from pprint import pprint
 from argparse import ArgumentParser
-from twisted.internet import reactor, defer, threads
-from .shell import RemoteShell, WinrsClient
+from twisted.internet import reactor, defer, task, threads
+from .shell import RemoteShell, LongRunningCommand, WinrsClient
 
 logging.basicConfig()
 log = logging.getLogger('zen.winrm')
-
-
-def parse_args():
-    parser = ArgumentParser()
-    parser.add_argument("--debug", "-d", action="store_true")
-    parser.add_argument("--config", "-c")
-    parser.add_argument("--remote", "-r")
-    parser.add_argument("--username", "-u")
-    parser.add_argument("--password", "-p")
-    parser.add_argument("--command", "-x")
-    return parser.parse_args()
 
 
 def print_output(stdout, stderr):
@@ -69,7 +58,21 @@ class WinrsCmd(cmd.Cmd):
 
 
 @defer.inlineCallbacks
-def tx_main(args):
+def long_running_main(args):
+    try:
+        client = LongRunningCommand(args.remote, args.username, args.password)
+        yield client.run_command(args.command)
+        for i in xrange(5):
+            stdout, stderr = yield task.deferLater(
+                reactor, 1, client.get_output)
+            print_output(stdout, stderr)
+        yield client.exit()
+    finally:
+        reactor.stop()
+
+
+@defer.inlineCallbacks
+def interactive_main(args):
     remote = args.remote
     shell = RemoteShell(remote, args.username, args.password)
     response = yield shell.create()
@@ -79,7 +82,7 @@ def tx_main(args):
 
 
 @defer.inlineCallbacks
-def tx_main2(args):
+def batch_main(args):
     remote = args.remote
     command = args.command
     try:
@@ -102,7 +105,7 @@ def tx_main2(args):
 
 
 @defer.inlineCallbacks
-def tx_main3(args):
+def single_shot_main(args):
     try:
         client = WinrsClient(args.remote, args.username, args.password)
         results = yield client.run_command(args.command)
@@ -111,11 +114,34 @@ def tx_main3(args):
         reactor.stop()
 
 
+def parse_args():
+    parser = ArgumentParser()
+    parser.add_argument("--debug", "-d", action="store_true")
+    parser.add_argument("--interactive", "-i", action="store_true")
+    parser.add_argument("--single-shot", "-s", action="store_true")
+    parser.add_argument("--batch", "-b", action="store_true")
+    parser.add_argument("--long-running", "-l", action="store_true")
+    parser.add_argument("--config", "-c")
+    parser.add_argument("--remote", "-r")
+    parser.add_argument("--username", "-u")
+    parser.add_argument("--password", "-p")
+    parser.add_argument("--command", "-x")
+    return parser.parse_args()
+
+
 def main():
     args = parse_args()
     if args.debug:
         log.setLevel(level=logging.DEBUG)
         defer.setDebugging(True)
+    if args.interactive:
+        tx_main = interactive_main
+    elif args.single_shot:
+        tx_main = single_shot_main
+    elif args.batch:
+        tx_main = batch_main
+    else:
+        tx_main = long_running_main
     reactor.callWhenRunning(tx_main, args)
     reactor.run()
 

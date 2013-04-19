@@ -17,7 +17,7 @@
     </s:Header>
     <s:Body>
         <rsp:Signal xmlns:rsp="http://schemas.microsoft.com/wbem/wsman/1/windows/shell" CommandId="{command_id}">
-            <rsp:Code>http://schemas.microsoft.com/wbem/wsman/1/windows/shell/signal/terminate</rsp:Code>
+            <rsp:Code>{signal_code}</rsp:Code>
         </rsp:Signal>
     </s:Body>
 </s:Envelope>
