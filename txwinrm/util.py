@@ -25,6 +25,13 @@ _AGENT = None
 _MAX_PERSISTENT_PER_HOST = 2
 _CACHED_CONNECTION_TIMEOUT = 240
 _CONNECT_TIMEOUT = 5
+_REQUEST_TEMPLATE_NAMES = (
+    'enumerate', 'pull',
+    'create', 'command', 'send', 'receive', 'signal', 'delete',
+    'subscribe', 'event_pull', 'unsubscribe')
+_REQUEST_TEMPLATE_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), 'request')
+_REQUEST_TEMPLATES = {}
 
 
 def _get_agent():
@@ -103,29 +110,19 @@ class RequestError(Exception):
 class UnauthorizedError(RequestError):
     pass
 
-_REQUEST_TEMPLATES = None
 
-
-def _build_request_templates():
-    global _REQUEST_TEMPLATES
-    _REQUEST_TEMPLATES = {}
-    basedir = os.path.dirname(os.path.abspath(__file__))
-    for name in 'enumerate', 'pull', \
-                'create', 'command', 'send', 'receive', 'signal', 'delete':
-        filename = '{0}.xml'.format(name)
-        path = os.path.join(basedir, 'request', filename)
+def _get_request_template(name):
+    if name not in _REQUEST_TEMPLATE_NAMES:
+        raise Exception('Invalid request template name: {0}'.format(name))
+    if name not in _REQUEST_TEMPLATES:
+        path = os.path.join(_REQUEST_TEMPLATE_DIR, '{0}.xml'.format(name))
         with open(path) as f:
             _REQUEST_TEMPLATES[name] = \
                 _XML_WHITESPACE_PATTERN.sub('><', f.read()).strip()
-
-
-def get_request_template(name):
-    if _REQUEST_TEMPLATES is None:
-        _build_request_templates()
     return _REQUEST_TEMPLATES[name]
 
 
-def get_url_and_headers(hostname, username, password):
+def _get_url_and_headers(hostname, username, password):
     url = "http://{hostname}:5985/wsman".format(hostname=hostname)
     authstr = "{0}:{1}".format(username, password)
     auth = 'Basic {0}'.format(base64.encodestring(authstr).strip())
@@ -134,18 +131,26 @@ def get_url_and_headers(hostname, username, password):
     return url, headers
 
 
-@defer.inlineCallbacks
-def send_request(url, headers, request_template_name, **kwargs):
-    request = get_request_template(request_template_name).format(**kwargs)
-    log.debug(request)
-    body_producer = _StringProducer(request)
-    response = yield _get_agent().request('POST', url, headers, body_producer)
-    if response.code == httplib.UNAUTHORIZED:
-        raise UnauthorizedError("unauthorized, check username and password.")
-    elif response.code != httplib.OK:
-        reader = _ErrorReader()
-        response.deliverBody(reader)
-        message = yield reader.d
-        raise RequestError("HTTP status: {0}. {1}".format(
-            response.code, message))
-    defer.returnValue(response)
+class RequestSender(object):
+
+    def __init__(self, hostname, useranme, password):
+        self._url, self._headers = _get_url_and_headers(
+            hostname, useranme, password)
+
+    @defer.inlineCallbacks
+    def send_request(self, request_template_name, **kwargs):
+        request = _get_request_template(request_template_name).format(**kwargs)
+        log.debug(request)
+        body_producer = _StringProducer(request)
+        response = yield _get_agent().request(
+            'POST', self._url, self._headers, body_producer)
+        if response.code == httplib.UNAUTHORIZED:
+            raise UnauthorizedError(
+                "unauthorized, check username and password.")
+        elif response.code != httplib.OK:
+            reader = _ErrorReader()
+            response.deliverBody(reader)
+            message = yield reader.d
+            raise RequestError("HTTP status: {0}. {1}".format(
+                response.code, message))
+        defer.returnValue(response)
