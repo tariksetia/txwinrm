@@ -35,7 +35,7 @@ from twisted.internet import defer
 from twisted.internet.protocol import Protocol
 from twisted.web._newclient import ResponseFailed
 from . import constants as c
-from .util import EventSender, get_datetime
+from .util import RequestSender, get_datetime
 
 log = logging.getLogger('zen.winrm')
 _MAX_REQUESTS_PER_ENUMERATION = 9999
@@ -52,6 +52,7 @@ class WinrmClient(object):
     def __init__(self, sender, handler):
         self._sender = sender
         self._handler = handler
+        self._hostname = sender.hostname
 
     @defer.inlineCallbacks
     def enumerate(self, wql, resource_uri=_DEFAULT_RESOURCE_URI):
@@ -90,7 +91,7 @@ def create_winrm_client(hostname, username, password):
     """
     Constructs a WinRM client with the default response handler.
     """
-    sender = EventSender(hostname, username, password)
+    sender = RequestSender(hostname, username, password)
     return WinrmClient(sender, SaxResponseHandler())
 
 

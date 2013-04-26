@@ -19,5 +19,6 @@ setup(name='txwinrm',
       url='https://github.com/zenoss/txwinrm',
       packages=['txwinrm', 'txwinrm.request'],
       package_data={'txwinrm.request': ['*.xml']},
-      scripts=['scripts/winrm', 'scripts/winrs', 'scripts/wecutil']
+      scripts=['scripts/winrm', 'scripts/winrs', 'scripts/wecutil',
+               'scripts/typeperf']
       )

@@ -26,8 +26,8 @@ _AGENT = None
 _MAX_PERSISTENT_PER_HOST = 2
 _CACHED_CONNECTION_TIMEOUT = 240
 _CONNECT_TIMEOUT = 5
-_NANOSECONDS_PATTERN = re.compile(r'\.(\d{6})(\d{3})Z')
-_MILLISECONDS_PATTERN = re.compile(r'\.(\d{3})Z')
+_NANOSECONDS_PATTERN = re.compile(r'\.(\d{6})(\d{3})')
+_MILLISECONDS_PATTERN = re.compile(r'\.(\d{3})')
 _REQUEST_TEMPLATE_NAMES = (
     'enumerate', 'pull',
     'create', 'command', 'send', 'receive', 'signal', 'delete',
@@ -137,8 +137,13 @@ def _get_url_and_headers(hostname, username, password):
 class RequestSender(object):
 
     def __init__(self, hostname, useranme, password):
+        self._hostname = hostname
         self._url, self._headers = _get_url_and_headers(
             hostname, useranme, password)
+
+    @property
+    def hostname(self):
+        return self._hostname
 
     @defer.inlineCallbacks
     def send_request(self, request_template_name, **kwargs):
@@ -191,11 +196,15 @@ def get_datetime(text):
     """
     Parse the date from a WinRM response and return a datetime object.
     """
-    if '.' in text:
-        format = "%Y-%m-%dT%H:%M:%S.%fZ"
-        str1 = _NANOSECONDS_PATTERN.sub(r'.\g<1>Z', text)
-        date_string = _MILLISECONDS_PATTERN.sub(r'.\g<1>000Z', str1)
+    if text.endswith('Z'):
+        if '.' in text:
+            format = "%Y-%m-%dT%H:%M:%S.%fZ"
+            str1 = _NANOSECONDS_PATTERN.sub(r'.\g<1>', text)
+            date_string = _MILLISECONDS_PATTERN.sub(r'.\g<1>000', str1)
+        else:
+            format = "%Y-%m-%dT%H:%M:%SZ"
+            date_string = text
     else:
-        format = "%Y-%m-%dT%H:%M:%SZ"
-        date_string = text
+        format = '%m/%d/%Y %H:%M:%S.%f'
+        date_string = _MILLISECONDS_PATTERN.sub(r'.\g<1>000', text)
     return datetime.strptime(date_string, format)

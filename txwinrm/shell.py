@@ -11,12 +11,14 @@ import re
 import logging
 import shlex
 import base64
+import csv
+from itertools import izip
 from pprint import pformat
 from cStringIO import StringIO
 from twisted.internet import reactor, defer, task
 from xml.etree import cElementTree as ET
 from . import constants as c
-from .util import EtreeRequestSender
+from .util import EtreeRequestSender, get_datetime
 
 log = logging.getLogger('zen.winrm')
 _MAX_REQUESTS_PER_COMMAND = 9999
@@ -186,19 +188,17 @@ class LongRunningCommand(object):
             'command', shell_id=self._shell_id,
             command_line_elem=command_line_elem)
         self._command_id = _find_command_id(command_elem)
-        self._deferred_receiving = self._start_receiving()
 
+    @defer.inlineCallbacks
     def receive(self):
-        receive_elem = yield task.deferLater(
-            reactor, self._READ_DELAY, self._sender.send_request,
-            'receive', shell_id=self._shell_id,
-            command_id=self._command_id)
+        receive_elem = yield self._sender.send_request(
+            'receive', shell_id=self._shell_id, command_id=self._command_id)
         stdout_parts = _find_stream(receive_elem, self._command_id, 'stdout')
         stderr_parts = _find_stream(receive_elem, self._command_id, 'stderr')
         self._exit_code = _find_exit_code(receive_elem, self._command_id)
         stdout = _stripped_lines(stdout_parts)
         stderr = _stripped_lines(stderr_parts)
-        return stdout, stderr
+        defer.returnValue((stdout, stderr))
 
     @defer.inlineCallbacks
     def stop(self):
@@ -220,6 +220,53 @@ class LongRunningCommand(object):
 def create_long_running_command(hostname, username, password):
     sender = EtreeRequestSender(hostname, username, password)
     return LongRunningCommand(sender)
+
+
+class Typeperf(object):
+
+    def __init__(self, long_running_command):
+        self._long_running_command = long_running_command
+        self._counters = None
+        self._row_count = 0
+
+    @defer.inlineCallbacks
+    def start(self, counters, time_between_samples=1):
+        self._counters = counters
+        self._row_count = 0
+        quoted_counters = ['"{0}"'.format(c) for c in counters]
+        command_line = 'typeperf {0} -si {1}'.format(
+            ' '.join(quoted_counters), time_between_samples)
+        yield self._long_running_command.start(command_line)
+
+    @defer.inlineCallbacks
+    def receive(self):
+        """
+        Returns a pair, (<dictionary>, <stripped stderr lines>), where the
+        dictionary is {<counter>: [(<datetime>, <float>)]}"""
+        stdout, stderr = yield self._long_running_command.receive()
+        dct = {}
+        for counter in self._counters:
+            dct[counter] = []
+        for row in csv.reader(stdout):
+            self._row_count += 1
+            if self._row_count == 1:
+                continue
+            timestamp = get_datetime(row[0])
+            for counter, value in izip(self._counters, row[1:]):
+                dct[counter].append((timestamp, float(value)))
+        defer.returnValue((dct, stderr))
+
+    @defer.inlineCallbacks
+    def stop(self):
+        yield self._long_running_command.stop()
+        self._counters = None
+        self._row_count = 0
+
+
+def create_typeperf(hostname, username, password):
+    long_running_command = create_long_running_command(
+        hostname, username, password)
+    return Typeperf(long_running_command)
 
 
 class RemoteShell(object):
