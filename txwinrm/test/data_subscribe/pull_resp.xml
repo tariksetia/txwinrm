@@ -1,0 +1,48 @@
+<s:Envelope xml:lang="en-US" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:n="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+    <s:Header>
+        <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+        <a:MessageID>uuid:2908B3FC-E69C-4172-856D-D1C3D3D5873B</a:MessageID>
+        <a:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:To>
+        <w:Bookmark>
+            <BookmarkList>
+                <Bookmark Channel="Application" IsCurrent="true" RecordId="3847"/>
+            </BookmarkList>
+        </w:Bookmark>
+        <a:RelatesTo>uuid:DC17922E-EBE7-4333-B92A-7157EB372F33</a:RelatesTo>
+    </s:Header>
+    <s:Body>
+        <n:PullResponse>
+            <n:EnumerationContext>uuid:05071354-C4AD-4745-AA80-1127029F660E</n:EnumerationContext>
+            <n:Items>
+                <Event xmlns="http://schemas.microsoft.com/win/2004/08/events/event">
+                    <System>
+                        <Provider Name="EventCreate"/>
+                        <EventID Qualifiers="0">1</EventID>
+                        <Level>2</Level>
+                        <Task>0</Task>
+                        <Keywords>0x80000000000000</Keywords>
+                        <TimeCreated SystemTime="2013-04-25T21:23:39.000000000Z"/>
+                        <EventRecordID>3847</EventRecordID>
+                        <Channel>Application</Channel>
+                        <Computer>AMAZONA-Q2R281F</Computer>
+                        <Security UserID="S-1-5-21-4253355731-4135319224-1610184190-500"/>
+                    </System>
+                    <EventData>
+                        <Data>test_from_gilroy_cmd_003</Data>
+                    </EventData>
+                    <RenderingInfo Culture="en-US">
+                        <Message>test_from_gilroy_cmd_003</Message>
+                        <Level>Error</Level>
+                        <Task/>
+                        <Opcode>Info</Opcode>
+                        <Channel/>
+                        <Provider/>
+                        <Keywords>
+                            <Keyword>Classic</Keyword>
+                        </Keywords>
+                    </RenderingInfo>
+                </Event>
+            </n:Items>
+        </n:PullResponse>
+    </s:Body>
+</s:Envelope>

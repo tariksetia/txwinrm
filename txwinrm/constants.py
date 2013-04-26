@@ -11,9 +11,11 @@ XML_NS_SOAP_1_2 = 'http://www.w3.org/2003/05/soap-envelope'
 XML_NS_CIM_SCHEMA = "http://schemas.dmtf.org/wbem/wscim/1/common"
 XML_NS_WS_MAN = 'http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd'
 XML_NS_ENUMERATION = 'http://schemas.xmlsoap.org/ws/2004/09/enumeration'
+XML_NS_EVENTING = 'http://schemas.xmlsoap.org/ws/2004/08/eventing'
 XML_NS_BUILTIN = 'http://www.w3.org/2001/XMLSchema-instance'
 XML_NS_MSWSMAN = 'http://schemas.microsoft.com/wbem/wsman/1/wsman.xsd'
 XML_NS_MSRSP = 'http://schemas.microsoft.com/wbem/wsman/1/windows/shell'
+XML_NS_MSEVENT = 'http://schemas.microsoft.com/win/2004/08/events/event'
 
 SOAP_HEADER = 'Header'
 SOAP_BODY = 'Body'

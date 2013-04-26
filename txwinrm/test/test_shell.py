@@ -49,7 +49,7 @@ class TestStrippedLines(unittest.TestCase):
 
 def get_elem(filename):
     with open(os.path.join(DATADIR, filename)) as f:
-            return ET.fromstring(f.read())
+        return ET.fromstring(f.read())
 
 
 class TestXmlParsing(unittest.TestCase):

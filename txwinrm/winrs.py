@@ -13,7 +13,8 @@ import logging
 from pprint import pprint
 from argparse import ArgumentParser
 from twisted.internet import reactor, defer, task, threads
-from .shell import RemoteShell, LongRunningCommand, WinrsClient
+from .shell import create_long_running_command, create_single_shot_command, \
+    create_remote_shell
 
 logging.basicConfig()
 log = logging.getLogger('zen.winrm')
@@ -60,13 +61,14 @@ class WinrsCmd(cmd.Cmd):
 @defer.inlineCallbacks
 def long_running_main(args):
     try:
-        client = LongRunningCommand(args.remote, args.username, args.password)
-        yield client.run_command(args.command)
+        client = create_long_running_command(
+            args.remote, args.username, args.password)
+        yield client.start(args.command)
         for i in xrange(5):
             stdout, stderr = yield task.deferLater(
-                reactor, 1, client.get_output)
+                reactor, 1, client.receive)
             print_output(stdout, stderr)
-        yield client.exit()
+        yield client.stop()
     finally:
         reactor.stop()
 
@@ -74,7 +76,7 @@ def long_running_main(args):
 @defer.inlineCallbacks
 def interactive_main(args):
     remote = args.remote
-    shell = RemoteShell(remote, args.username, args.password)
+    shell = create_remote_shell(remote, args.username, args.password)
     response = yield shell.create()
     intro = '\n'.join(response.stdout)
     winrs_cmd = WinrsCmd(shell)
@@ -86,7 +88,7 @@ def batch_main(args):
     remote = args.remote
     command = args.command
     try:
-        shell = RemoteShell(remote, args.username, args.password)
+        shell = create_remote_shell(remote, args.username, args.password)
         print 'Creating shell on {0}.'.format(remote)
         yield shell.create()
         for i in range(2):
@@ -107,7 +109,8 @@ def batch_main(args):
 @defer.inlineCallbacks
 def single_shot_main(args):
     try:
-        client = WinrsClient(args.remote, args.username, args.password)
+        client = create_single_shot_command(
+            args.remote, args.username, args.password)
         results = yield client.run_command(args.command)
         pprint(results)
     finally:

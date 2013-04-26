@@ -12,6 +12,7 @@ import re
 import base64
 import logging
 import httplib
+from datetime import datetime
 from xml.etree import cElementTree as ET
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol
@@ -25,6 +26,8 @@ _AGENT = None
 _MAX_PERSISTENT_PER_HOST = 2
 _CACHED_CONNECTION_TIMEOUT = 240
 _CONNECT_TIMEOUT = 5
+_NANOSECONDS_PATTERN = re.compile(r'\.(\d{6})(\d{3})Z')
+_MILLISECONDS_PATTERN = re.compile(r'\.(\d{3})Z')
 _REQUEST_TEMPLATE_NAMES = (
     'enumerate', 'pull',
     'create', 'command', 'send', 'receive', 'signal', 'delete',
@@ -139,6 +142,8 @@ class RequestSender(object):
 
     @defer.inlineCallbacks
     def send_request(self, request_template_name, **kwargs):
+        log.debug('sending request: {0} {1}'.format(
+            request_template_name, kwargs))
         request = _get_request_template(request_template_name).format(**kwargs)
         log.debug(request)
         body_producer = _StringProducer(request)
@@ -154,3 +159,43 @@ class RequestSender(object):
             raise RequestError("HTTP status: {0}. {1}".format(
                 response.code, message))
         defer.returnValue(response)
+
+
+class _StringProtocol(Protocol):
+
+    def __init__(self):
+        self.d = defer.Deferred()
+        self._data = []
+
+    def dataReceived(self, data):
+        self._data.append(data)
+
+    def connectionLost(self, reason):
+        self.d.callback(''.join(self._data))
+
+
+class EtreeRequestSender(RequestSender):
+    """A request sender that returns an etree element"""
+
+    @defer.inlineCallbacks
+    def send_request(self, request_template_name, **kwargs):
+        resp = yield RequestSender.send_request(
+            self, request_template_name, **kwargs)
+        proto = _StringProtocol()
+        resp.deliverBody(proto)
+        xml_str = yield proto.d
+        defer.returnValue(ET.fromstring(xml_str))
+
+
+def get_datetime(text):
+    """
+    Parse the date from a WinRM response and return a datetime object.
+    """
+    if '.' in text:
+        format = "%Y-%m-%dT%H:%M:%S.%fZ"
+        str1 = _NANOSECONDS_PATTERN.sub(r'.\g<1>Z', text)
+        date_string = _MILLISECONDS_PATTERN.sub(r'.\g<1>000Z', str1)
+    else:
+        format = "%Y-%m-%dT%H:%M:%SZ"
+        date_string = text
+    return datetime.strptime(date_string, format)

@@ -1,0 +1,21 @@
+<s:Envelope xml:lang="en-US" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:e="http://schemas.xmlsoap.org/ws/2004/08/eventing" xmlns:n="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+    <s:Header>
+        <a:Action>http://schemas.xmlsoap.org/ws/2004/08/eventing/SubscribeResponse</a:Action>
+        <a:MessageID>uuid:ACFA9E9F-D4C4-4C81-AC90-AB6D82CFACA4</a:MessageID>
+        <a:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:To>
+        <a:RelatesTo>uuid:40E5E215-9AE6-4BB2-BF59-5BE542B6E67B</a:RelatesTo>
+    </s:Header>
+    <s:Body>
+        <e:SubscribeResponse>
+            <e:SubscriptionManager>
+                <a:Address>http://gilroy:5985/wsman</a:Address>
+                <a:ReferenceProperties>
+                    <w:ResourceURI>http://schemas.microsoft.com/wbem/wsman/1/windows/EventLog</w:ResourceURI>
+                    <e:Identifier>885E9924-235C-44EB-9834-B3440B7DCD38</e:Identifier>
+                </a:ReferenceProperties>
+            </e:SubscriptionManager>
+            <e:Expires>PT0.000S</e:Expires>
+            <n:EnumerationContext>uuid:00A69F40-AF0D-4E6D-93BD-EFE6AADC3F51</n:EnumerationContext>
+        </e:SubscribeResponse>
+    </s:Body>
+</s:Envelope>

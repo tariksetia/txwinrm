@@ -16,7 +16,7 @@
         </w:OptionSet>
         <w:OperationTimeout>PT5.000S</w:OperationTimeout>
         <w:ResourceURI xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">http://schemas.microsoft.com/wbem/wsman/1/windows/EventLog</w:ResourceURI>
-        <e:Identifier xmlns:e="http://schemas.xmlsoap.org/ws/2004/08/eventing">{subscription_identifier}</e:Identifier>
+        <e:Identifier xmlns:e="http://schemas.xmlsoap.org/ws/2004/08/eventing">{subscription_id}</e:Identifier>
     </s:Header>
     <s:Body>
         <e:Unsubscribe/>

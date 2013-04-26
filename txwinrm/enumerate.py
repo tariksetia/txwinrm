@@ -28,7 +28,6 @@ attributes of the returned item objects follow these rules
 
 import logging
 from cStringIO import StringIO
-from datetime import datetime
 from collections import deque
 from pprint import pformat
 from xml import sax
@@ -36,7 +35,7 @@ from twisted.internet import defer
 from twisted.internet.protocol import Protocol
 from twisted.web._newclient import ResponseFailed
 from . import constants as c
-from .util import get_url_and_headers, send_request
+from .util import EventSender, get_datetime
 
 log = logging.getLogger('zen.winrm')
 _MAX_REQUESTS_PER_ENUMERATION = 9999
@@ -50,13 +49,9 @@ class WinrmClient(object):
     a list of items.
     """
 
-    def __init__(self, hostname, username, password, handler):
-        self._hostname = hostname
-        self._username = username
-        self._password = password
+    def __init__(self, sender, handler):
+        self._sender = sender
         self._handler = handler
-        self._url, self._headers = get_url_and_headers(
-            hostname, username, password)
 
     @defer.inlineCallbacks
     def enumerate(self, wql, resource_uri=_DEFAULT_RESOURCE_URI):
@@ -70,9 +65,10 @@ class WinrmClient(object):
             for i in xrange(_MAX_REQUESTS_PER_ENUMERATION):
                 log.debug('{0} "{1}" {2}'.format(
                     self._hostname, wql, request_template_name))
-                response = yield send_request(
-                    self._url, self._headers, request_template_name,
-                    resource_uri=resource_uri, wql=wql,
+                response = yield self._sender.send_request(
+                    request_template_name,
+                    resource_uri=resource_uri,
+                    wql=wql,
                     enumeration_context=enumeration_context)
                 log.debug("{0} HTTP status: {1}".format(
                     self._hostname, response.code))
@@ -94,7 +90,8 @@ def create_winrm_client(hostname, username, password):
     """
     Constructs a WinRM client with the default response handler.
     """
-    return WinrmClient(hostname, username, password, SaxResponseHandler())
+    sender = EventSender(hostname, username, password)
+    return WinrmClient(sender, SaxResponseHandler())
 
 
 def create_parser_and_factory():
@@ -622,14 +619,3 @@ class ItemsContentHandler(sax.handler.ContentHandler):
             if tag.matches(c.XML_NS_CIM_SCHEMA, "Datetime") \
                     or tag.matches(None, "Datetime"):
                 self._value = (get_datetime(self._text_buffer.text),)
-
-
-def get_datetime(text):
-    """
-    Parse the date from a WinRM response and return a datetime object.
-    """
-    if '.' in text:
-        format = "%Y-%m-%dT%H:%M:%S.%fZ"
-    else:
-        format = "%Y-%m-%dT%H:%M:%SZ"
-    return datetime.strptime(text, format)
