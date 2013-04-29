@@ -72,8 +72,8 @@ def _event_list(elem, localname):
     return texts
 
 
-def _safe_int(text):
-    return None if text is None else int(text)
+def _safe_int(text, base=10):
+    return None if text is None else int(text, base)
 
 
 def _find_events(pull_resp_elem):
@@ -86,9 +86,9 @@ def _find_events(pull_resp_elem):
             event_id=_safe_int(_event_text(system_elem, 'EventID')),
             event_id_qualifiers=_safe_int(_event_attr(
                 system_elem, 'EventID', 'Qualifiers')),
-            level=_event_text(system_elem, 'Level'),
+            level=_safe_int(_event_text(system_elem, 'Level')),
             task=_safe_int(_event_text(system_elem, 'Task')),
-            keywords=_safe_int(_event_text(system_elem, 'Keywords')),
+            keywords=_safe_int(_event_text(system_elem, 'Keywords'), 16),
             time_created=_event_datetime(
                 system_elem, 'TimeCreated', 'SystemTime'),
             event_record_id=_safe_int(_event_text(
@@ -100,7 +100,7 @@ def _find_events(pull_resp_elem):
             rendering_info = None
         else:
             rendering_info = RenderingInfo(
-                culture=_event_attr(ri_elem, 'RenderingInfo', 'Culture'),
+                culture=ri_elem.get('Culture'),
                 message=_event_text(ri_elem, 'Message'),
                 level=_event_text(ri_elem, 'Level'),
                 opcode=_event_text(ri_elem, 'Opcode'),

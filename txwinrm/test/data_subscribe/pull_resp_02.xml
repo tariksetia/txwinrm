@@ -1,0 +1,14 @@
+<s:Envelope xml:lang="en-US" xmlns:a="http://schemas.xmlsoap.org/ws/2004/08/addressing" xmlns:n="http://schemas.xmlsoap.org/ws/2004/09/enumeration" xmlns:s="http://www.w3.org/2003/05/soap-envelope" xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
+    <s:Header>
+        <a:Action>http://schemas.xmlsoap.org/ws/2004/09/enumeration/PullResponse</a:Action>
+        <a:MessageID>uuid:DA55072A-342F-46BE-B6F8-7E81A0C9EABA</a:MessageID>
+        <a:To>http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:To>
+        <a:RelatesTo>uuid:EC5180D0-F722-48A4-8155-9D0A4E3976A2</a:RelatesTo>
+    </s:Header>
+    <s:Body>
+        <n:PullResponse>
+            <n:EnumerationContext>uuid:F31A07AC-3B61-4ECC-A489-1B492FA1E7D6</n:EnumerationContext>
+            <n:Items/>
+        </n:PullResponse>
+    </s:Body>
+</s:Envelope>

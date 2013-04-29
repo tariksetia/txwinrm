@@ -27,7 +27,6 @@ _MAX_PERSISTENT_PER_HOST = 2
 _CACHED_CONNECTION_TIMEOUT = 240
 _CONNECT_TIMEOUT = 5
 _NANOSECONDS_PATTERN = re.compile(r'\.(\d{6})(\d{3})')
-_MILLISECONDS_PATTERN = re.compile(r'\.(\d{3})')
 _REQUEST_TEMPLATE_NAMES = (
     'enumerate', 'pull',
     'create', 'command', 'send', 'receive', 'signal', 'delete',
@@ -199,12 +198,10 @@ def get_datetime(text):
     if text.endswith('Z'):
         if '.' in text:
             format = "%Y-%m-%dT%H:%M:%S.%fZ"
-            str1 = _NANOSECONDS_PATTERN.sub(r'.\g<1>', text)
-            date_string = _MILLISECONDS_PATTERN.sub(r'.\g<1>000', str1)
+            date_string = _NANOSECONDS_PATTERN.sub(r'.\g<1>', text)
         else:
             format = "%Y-%m-%dT%H:%M:%SZ"
             date_string = text
     else:
         format = '%m/%d/%Y %H:%M:%S.%f'
-        date_string = _MILLISECONDS_PATTERN.sub(r'.\g<1>000', text)
     return datetime.strptime(date_string, format)

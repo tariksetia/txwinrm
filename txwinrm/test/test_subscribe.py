@@ -8,9 +8,10 @@
 ##############################################################################
 
 import os
-import unittest
 from datetime import datetime
 from xml.etree import cElementTree as ET
+from twisted.trial import unittest
+from twisted.internet import defer
 from ..subscribe import _find_subscription_id, _find_enumeration_context, \
     _find_events, Event, System, RenderingInfo, EventSubscription
 
@@ -38,8 +39,9 @@ class TestXmlParsing(unittest.TestCase):
         self.assertEqual(actual, expected)
 
     def test_find_events(self):
-        elem = get_elem('pull_resp.xml')
-        actual = _find_events(elem)
+        self.maxDiff = None
+        elem = get_elem('pull_resp_01.xml')
+        actual = list(_find_events(elem))
         expected = [
             Event(
                 system=System(
@@ -68,13 +70,15 @@ class TestXmlParsing(unittest.TestCase):
 class _FakeSubscriber(object):
 
     def subscribe(self, event_query):
-        return get_elem('subscribe_resp.xml')
+        return defer.succeed(get_elem('subscribe_resp.xml'))
 
-    def pull(self):
-        return get_elem('pull_resp.xml')
+    def pull(self, enumeration_context):
+        if enumeration_context == 'uuid:05071354-C4AD-4745-AA80-1127029F660E':
+            return defer.succeed(get_elem('pull_resp_02.xml'))
+        return defer.succeed(get_elem('pull_resp_01.xml'))
 
-    def unsubscribe(self):
-        return
+    def unsubscribe(self, subscription_id):
+        return defer.succeed(None)
 
 
 class TestEventSubscription(unittest.TestCase):
@@ -85,15 +89,22 @@ class TestEventSubscription(unittest.TestCase):
     def tearDown(self):
         self._subscription = None
 
+    @defer.inlineCallbacks
     def test_subscribe(self):
-        self._subscription.subscribe()
+        yield self._subscription.subscribe()
         self.assertIsNotNone(self._subscription._subscription_id)
         self.assertIsNotNone(self._subscription._enumeration_context)
 
+    @defer.inlineCallbacks
     def test_pull(self):
-        self._subscription.subscribe()
+        yield self._subscription.subscribe()
         ec = self._subscription._enumeration_context
-        events = self._subscription.pull()
+        events = []
+
+        def append_event(event):
+            events.append(event)
+
+        yield self._subscription.pull(append_event)
         self.assertIsNotNone(self._subscription._subscription_id)
         self.assertIsNotNone(self._subscription._enumeration_context)
         self.assertNotEqual(ec, self._subscription._enumeration_context)
@@ -102,7 +113,11 @@ class TestEventSubscription(unittest.TestCase):
 
     def test_unsubscribe(self):
         self._subscription.subscribe()
-        self._subscription.pull()
+
+        def do_nothing(event):
+            pass
+
+        self._subscription.pull(do_nothing)
         self._subscription.unsubscribe()
         self.assertIsNone(self._subscription._subscription_id)
         self.assertIsNone(self._subscription._enumeration_context)
