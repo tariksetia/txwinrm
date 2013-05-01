@@ -14,14 +14,13 @@ This testing requires real Windows machines that are setup manually.
 import os
 import re
 import unittest
-import base64
 from itertools import izip
 from xml import sax
 from datetime import datetime
 from ..enumerate import create_parser_and_factory, get_datetime, \
     ItemsContentHandler, ChainingContentHandler, TextBufferingContentHandler, \
-    ItemsAccumulator, AddPropertyWithoutItemError, create_winrm_client, Item, \
-    TagStackStateError, TagComparer
+    ItemsAccumulator, AddPropertyWithoutItemError, Item, TagStackStateError, \
+    TagComparer
 
 MAX_RESPONSE_FILES = 999
 
@@ -466,6 +465,7 @@ class TestItemsAccumulator(unittest.TestCase):
     def test_add_property_without_item(self):
         self.assertRaises(AddPropertyWithoutItemError,
                           ItemsAccumulator().add_property, "foo", "bar")
+
 
 class TestItem(unittest.TestCase):
 

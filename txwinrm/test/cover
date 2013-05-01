@@ -1,4 +1,4 @@
 #! /bin/sh
 
-coverage run --include="txwinrm/*" --omit="txwinrm/test/*" -m unittest discover
+coverage run --include="txwinrm/*" --omit="txwinrm/test/*" `which trial` txwinrm
 coverage report "$@"

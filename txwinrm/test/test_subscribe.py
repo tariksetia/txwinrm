@@ -9,19 +9,32 @@
 
 import os
 from datetime import datetime
-from xml.etree import cElementTree as ET
 from twisted.trial import unittest
 from twisted.internet import defer
+from .tools import create_get_elem_func
 from ..subscribe import _find_subscription_id, _find_enumeration_context, \
     _find_events, Event, System, RenderingInfo, EventSubscription
 
 DATADIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "data_subscribe")
+get_elem = create_get_elem_func(DATADIR)
 
 
-def get_elem(filename):
-    with open(os.path.join(DATADIR, filename)) as f:
-        return ET.fromstring(f.read())
+class FakeRequestSender(object):
+
+    hostname = 'fake_host'
+
+    def send_request(self, request_template_name, **kwargs):
+        elem = None
+        if request_template_name == 'subscribe':
+            elem = get_elem('subscribe_resp.xml')
+        elif request_template_name == 'event_pull':
+            if kwargs['enumeration_context'] == \
+                    'uuid:05071354-C4AD-4745-AA80-1127029F660E':
+                elem = get_elem('pull_resp_02.xml')
+            else:
+                elem = get_elem('pull_resp_01.xml')
+        return defer.succeed(elem)
 
 
 class TestXmlParsing(unittest.TestCase):
@@ -67,24 +80,10 @@ class TestXmlParsing(unittest.TestCase):
         self.assertEqual(actual, expected)
 
 
-class _FakeSubscriber(object):
-
-    def subscribe(self, event_query):
-        return defer.succeed(get_elem('subscribe_resp.xml'))
-
-    def pull(self, enumeration_context):
-        if enumeration_context == 'uuid:05071354-C4AD-4745-AA80-1127029F660E':
-            return defer.succeed(get_elem('pull_resp_02.xml'))
-        return defer.succeed(get_elem('pull_resp_01.xml'))
-
-    def unsubscribe(self, subscription_id):
-        return defer.succeed(None)
-
-
 class TestEventSubscription(unittest.TestCase):
 
     def setUp(self):
-        self._subscription = EventSubscription(_FakeSubscriber())
+        self._subscription = EventSubscription(FakeRequestSender())
 
     def tearDown(self):
         self._subscription = None

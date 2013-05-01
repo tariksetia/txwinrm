@@ -8,16 +8,17 @@
 ##############################################################################
 
 import os
-import unittest
-import base64
+from twisted.trial import unittest
+from twisted.internet import defer
 from xml.etree import cElementTree as ET
+from .tools import create_get_elem_func
 from ..shell import _build_command_line_elem, _stripped_lines, \
     _find_shell_id, _find_command_id, _find_stream, _find_exit_code, \
     CommandResponse, SingleShotCommand
 
 DATADIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "data_shell")
-
+get_elem = create_get_elem_func(DATADIR)
 COMMAND_ID = '75233C4B-10BC-4796-A767-2D95F553DEEC'
 
 EXPECTED_COMMAND_LINE_ELEM = \
@@ -28,6 +29,28 @@ EXPECTED_COMMAND_LINE_ELEM = \
     '<rsp:Arguments>-sc</rsp:Arguments>' \
     '<rsp:Arguments>1</rsp:Arguments>' \
     '</rsp:CommandLine>'
+
+
+class FakeRequestSender(object):
+
+    hostname = 'fake_host'
+
+    def send_request(self, request_template_name, **kwargs):
+        elem = None
+
+        if request_template_name == 'command':
+            elem = get_elem('command_resp.xml')
+
+        elif request_template_name == 'create':
+            elem = get_elem('create_resp.xml')
+
+        elif request_template_name == 'receive':
+            if kwargs.get('foo') == 'bar':
+                elem = get_elem('receive_resp_01.xml')
+            else:
+                elem = get_elem('receive_resp_02.xml')
+
+        return defer.succeed(elem)
 
 
 class TestBuildCommandLineElem(unittest.TestCase):
@@ -119,6 +142,12 @@ class TestCommandResponse(unittest.TestCase):
         self.assertEqual(
             repr(resp),
             "{'exit_code': 'quux', 'stderr': 'bar', 'stdout': 'foo'}")
+
+
+class TestSingleShotCommand(unittest.TestCase):
+
+    def test_run_command(self):
+        SingleShotCommand(FakeRequestSender()).run_command('foo')
 
 if __name__ == '__main__':
     unittest.main()

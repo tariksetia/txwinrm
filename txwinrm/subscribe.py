@@ -111,34 +111,10 @@ def _find_events(pull_resp_elem):
             rendering_info=rendering_info)
 
 
-class _TwistedSubscriber(object):
+class EventSubscription(object):
 
     def __init__(self, sender):
         self._sender = sender
-
-    @defer.inlineCallbacks
-    def subscribe(self, event_query):
-        resp_elem = yield self._sender.send_request(
-            'subscribe', event_query=event_query)
-        defer.returnValue(resp_elem)
-
-    @defer.inlineCallbacks
-    def pull(self, enumeration_context):
-        resp_elem = yield self._sender.send_request(
-            'event_pull', enumeration_context=enumeration_context)
-        defer.returnValue(resp_elem)
-
-    @defer.inlineCallbacks
-    def unsubscribe(self, subscription_id):
-        resp_elem = yield self._sender.send_request(
-            'unsubscribe', subscription_id=subscription_id)
-        defer.returnValue(resp_elem)
-
-
-class EventSubscription(object):
-
-    def __init__(self, subscriber):
-        self._subscriber = subscriber
         self._subscription_id = None
         self._enumeration_context = None
 
@@ -150,9 +126,15 @@ class EventSubscription(object):
         if self._subscription_id is not None:
             raise Exception('You must unsubscribe first.')
         event_query = _EVENT_QUERY_FMT.format(path=path, select=select)
-        resp_elem = yield self._subscriber.subscribe(event_query)
+        resp_elem = yield self._send_subscribe(event_query)
         self._subscription_id = _find_subscription_id(resp_elem)
         self._enumeration_context = _find_enumeration_context(resp_elem)
+
+    @defer.inlineCallbacks
+    def _send_subscribe(self, event_query):
+        resp_elem = yield self._sender.send_request(
+            'subscribe', event_query=event_query)
+        defer.returnValue(resp_elem)
 
     @defer.inlineCallbacks
     def pull(self, process_event_func):
@@ -161,7 +143,7 @@ class EventSubscription(object):
         request_count = 0
         while request_count < _MAX_PULL_REQUESTS_PER_BATCH:
             request_count += 1
-            resp_elem = yield self._subscriber.pull(self._enumeration_context)
+            resp_elem = yield self._send_pull(self._enumeration_context)
             self._enumeration_context = _find_enumeration_context(resp_elem)
             found_events = 0
             for event in _find_events(resp_elem):
@@ -173,15 +155,26 @@ class EventSubscription(object):
             raise Exception('Reached max pull requests per batch.')
 
     @defer.inlineCallbacks
+    def _send_pull(self, enumeration_context):
+        resp_elem = yield self._sender.send_request(
+            'event_pull', enumeration_context=enumeration_context)
+        defer.returnValue(resp_elem)
+
+    @defer.inlineCallbacks
     def unsubscribe(self):
         if self._subscription_id is None:
             return
-        yield self._subscriber.unsubscribe(self._subscription_id)
+        yield self._send_unsubscribe(self._subscription_id)
         self._subscription_id = None
         self._enumeration_context = None
+
+    @defer.inlineCallbacks
+    def _send_unsubscribe(self, subscription_id):
+        resp_elem = yield self._sender.send_request(
+            'unsubscribe', subscription_id=subscription_id)
+        defer.returnValue(resp_elem)
 
 
 def create_event_subscription(hostname, username, password):
     sender = EtreeRequestSender(hostname, username, password)
-    subscriber = _TwistedSubscriber(sender)
-    return EventSubscription(subscriber)
+    return EventSubscription(sender)
