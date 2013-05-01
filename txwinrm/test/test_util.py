@@ -14,7 +14,7 @@ This testing requires real Windows machines that are setup manually.
 import os
 import unittest
 from ..util import _parse_error_message, _get_agent, _StringProducer, \
-    get_request_template
+    _get_request_template
 
 
 class TestErrorReader(unittest.TestCase):
@@ -55,7 +55,7 @@ class TestStringProducer(unittest.TestCase):
 class TestRequestTemplate(unittest.TestCase):
 
     def test_get_request_template(self):
-        templ = get_request_template('enumerate')
+        templ = _get_request_template('enumerate')
         self.assertIn(
             'http://schemas.xmlsoap.org/ws/2004/09/enumeration/Enumerate',
             templ)
