@@ -3,70 +3,77 @@ txwinrm
 
 Asynchronous Python WinRM client
 
-
 Current Feature Support
 -----------------------
 
-* HTTP
-* Basic authentication
-* WQL queries
-* WinRS
-* typeperf
-* Subscribe to the Windows Event Log
-
+-  HTTP
+-  Basic authentication
+-  WQL queries
+-  WinRS
+-  typeperf
+-  Subscribe to the Windows Event Log
 
 Future Feature Support
 ----------------------
 
-* Kerberos authentication (domain accounts)
-* NTLM authentication (local accounts)
-* HTTPS
-
+-  Kerberos authentication (domain accounts)
+-  NTLM authentication (local accounts)
+-  HTTPS
 
 Installation
 ------------
 
 Install this application into your Python site libraries with:
 
-    $ python setup.py install
+::
 
+    $ python setup.py install
 
 Dependencies
 ------------
 
-* Python 2.7
-* Twisted 11.0 or later (utilizes HTTP connection pools with Twisted 12.1 or later)
-
+-  Python 2.7
+-  Twisted 11.0 or later (utilizes HTTP connection pools with Twisted
+   12.1 or later)
 
 Configuring the Target Windows Machines
 ---------------------------------------
 
-You can enable the WinRM service on Windows Server 2003, 2008 and 2012. Run
-Command Prompt as Administrator and execute the following commands
+| You can enable the WinRM service on Windows Server 2003, 2008 and
+2012. Run
+| Command Prompt as Administrator and execute the following commands
+
+::
 
     winrm quickconfig
     winrm s winrm/config/service @{AllowUnencrypted="true";MaxConcurrentOperationsPerUser="4294967295"}
     winrm s winrm/config/service/auth @{Basic="true"}
     winrm s winrm/config/winrs @{MaxShellsPerUser="2147483647"}
 
-
 WQL Queries
 -----------
 
 You can pass a single host and query via the command line...
 
+::
+
     $ winrm -r host -u user -p passwd -f "select * from Win32_NetworkAdapter"
 
+| ..., or create an ini-style config file and hit multiple targets with
+multiple
+| queries. Example config is at examples/config.ini
 
-..., or create an ini-style config file and hit multiple targets with multiple
-queries. Example config is at examples/config.ini
+::
 
     $ winrm -c path/to/config.ini
 
+| This will send WinRM enumerate requests to the hosts listed in
+config.ini. It
+| will send a request for each WQL query listed in that file. The output
+will
+| look like
 
-This will send WinRM enumerate requests to the hosts listed in config.ini. It
-will send a request for each WQL query listed in that file. The output will
-look like
+::
 
     <hostname> ==> <WQL query>
         <property-name> = <value>
@@ -76,8 +83,9 @@ look like
         ...
     ...
 
-
 Here is an example...
+
+::
 
     cupertino ==> Select name,caption,pathName,serviceType,startMode,startName,state From Win32_Service
       Caption = Application Experience
@@ -92,10 +100,13 @@ Here is an example...
       Name = ALG
     ...
 
+| A summary of the number of failures if any and number of XML elements
+processed
+| appears at the end. The summary and any errors are written to stderr,
+so
+| redirect stdin to /dev/null if you want terse output.
 
-A summary of the number of failures if any and number of XML elements processed
-appears at the end. The summary and any errors are written to stderr, so
-redirect stdin to /dev/null if you want terse output.
+::
 
     $ winrm -c path/to/config.ini >/dev/null
 
@@ -119,23 +130,27 @@ redirect stdin to /dev/null if you want terse output.
           5.38% of CPU time used by WmiPrvSE#1 process with pid 1760
           4.30% of CPU time used by WmiPrvSE#2 process with pid 1268
 
-
-The '-d' option increases logging, printing out the XML for all requests and
-responses, along with the HTTP status code.
-
+| The '-d' option increases logging, printing out the XML for all
+requests and
+| responses, along with the HTTP status code.
 
 WinRS
 -----
 
 The winrs program has four modes of operation:
 
-* --single-shot or -s: Execute a single command and return its output
-* --long-running or -l: Execute a single long-running command like 'typeperf -si 1' and check the output periodically
-* --interactive or -i: Execute many commands in an interactive command prompt on the remote host
-* --batch or -b: Opens a command prompt on the remote system and executes a list of commands (actually right now it executes one command twice as a proof-of-concept)
-
+-  --single-shot or -s: Execute a single command and return its output
+-  --long-running or -l: Execute a single long-running command like
+   'typeperf -si 1' and check the output periodically
+-  --interactive or -i: Execute many commands in an interactive command
+   prompt on the remote host
+-  --batch or -b: Opens a command prompt on the remote system and
+   executes a list of commands (actually right now it executes one
+   command twice as a proof-of-concept)
 
 An example of single-shot
+
+::
 
     $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -sc 1' -r oakland -s
     {'exit_code': 0,
@@ -145,8 +160,9 @@ An example of single-shot
                 'Exiting, please wait...',
                 'The command completed successfully.']}
 
-
 An example of long-running
+
+::
 
     $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -si 1' -r oakland -l
       "(PDH-CSV 4.0)","\\AMAZONA-SDFU7B1\Memory\Pages/sec","\\AMAZONA-SDFU7B1\PhysicalDisk(_Total)\Avg. Disk Queue Length","\\AMAZONA-SDFU7B1\Processor(_Total)\% Processor Time"
@@ -155,8 +171,9 @@ An example of long-running
       "04/19/2013 21:43:12.631","0.000000","0.000000","1.538423"
       "04/19/2013 21:43:13.645","0.000000","0.000000","0.000197"
 
-
 An example of interactive
+
+::
 
     $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -si 1' -r oakland -i
     Microsoft Windows [Version 6.2.9200]
@@ -181,8 +198,9 @@ An example of interactive
 
     C:\Users\Default>exit
 
-
 An example of batch
+
+::
 
     $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -sc 1' -r oakland -b
     Creating shell on oakland.
@@ -209,13 +227,16 @@ An example of batch
 
     Exit code of shell on oakland: 0
 
-
 Typeperf
 --------
 
-txwinrm's typeperf command allows you to run a remote typeperf command, check
-the output periodically, parse it, and print it to stdout. It support the -si
-option and multiple counters. Here is an example:
+| txwinrm's typeperf command allows you to run a remote typeperf
+command, check
+| the output periodically, parse it, and print it to stdout. It support
+the -si
+| option and multiple counters. Here is an example:
+
+::
 
     $ typeperf -r gilroy -u Administrator -p Z3n0ss '\Processor(_Total)\% Processor Time' '\memory\Available Bytes' '\paging file(_Total)\% Usage'
     \memory\Available Bytes
@@ -239,18 +260,22 @@ option and multiple counters. Here is an example:
     \paging file(_Total)\% Usage
       00:54:30: 0.012207
 
-
 Feedback
 --------
 
-To provide feedback on txwinrm start a discussion on the zenoss-windows forum on community.zenoss.org <http://community.zenoss.org/community/forums/zenoss-windows>.
+To provide feedback on txwinrm start a discussion on the zenoss-windows
+forum on community.zenoss.org
+http://community.zenoss.org/community/forums/zenoss-windows.
 
-Zenoss uses JIRA to track bugs. Create an account and file a bug, or browse reported bugs. <http://jira.zenoss.com/jira/secure/Dashboard.jspa>
+Zenoss uses JIRA to track bugs. Create an account and file a bug, or
+browse reported bugs. http://jira.zenoss.com/jira/secure/Dashboard.jspa
 
 Unit Test Coverage
 ------------------
 
 As of Apr 16, 2013...
+
+::
 
     $ txwinrm/test/cover
     ........................
@@ -268,12 +293,15 @@ As of Apr 16, 2013...
     ---------------------------------------
     TOTAL                 480    104    78%
 
-
 Develop
 -------
 
-Run txwinrm/test/precommit before merging to master. This requires that you...
+Run txwinrm/test/precommit before merging to master. This requires that
+you...
+
+::
 
     easy_install flake8
     easy_install coverage
     git clone https://github.com/dgladkov/cyclic_complexity
+
