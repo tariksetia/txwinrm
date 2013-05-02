@@ -251,7 +251,11 @@ class Typeperf(object):
             self._row_count += 1
             if self._row_count == 1:
                 continue
-            timestamp = get_datetime(row[0])
+            try:
+                timestamp = get_datetime(row[0])
+            except ValueError as e:
+                log.debug('Typeperf receive {0}. {1}'.format(row, e))
+                continue
             for counter, value in izip(self._counters, row[1:]):
                 dct[counter].append((timestamp, float(value)))
         defer.returnValue((dct, stderr))

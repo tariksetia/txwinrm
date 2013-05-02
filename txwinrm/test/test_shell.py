@@ -8,13 +8,14 @@
 ##############################################################################
 
 import os
+from datetime import datetime
 from twisted.trial import unittest
 from twisted.internet import defer
 from xml.etree import cElementTree as ET
 from .tools import create_get_elem_func
 from ..shell import _build_command_line_elem, _stripped_lines, \
     _find_shell_id, _find_command_id, _find_stream, _find_exit_code, \
-    CommandResponse, SingleShotCommand
+    CommandResponse, SingleShotCommand, LongRunningCommand, Typeperf
 
 DATADIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), "data_shell")
@@ -34,6 +35,7 @@ EXPECTED_COMMAND_LINE_ELEM = \
 class FakeRequestSender(object):
 
     hostname = 'fake_host'
+    _receive_resp = 'receive_resp_01.xml'
 
     def send_request(self, request_template_name, **kwargs):
         elem = None
@@ -45,10 +47,8 @@ class FakeRequestSender(object):
             elem = get_elem('create_resp.xml')
 
         elif request_template_name == 'receive':
-            if kwargs.get('foo') == 'bar':
-                elem = get_elem('receive_resp_01.xml')
-            else:
-                elem = get_elem('receive_resp_02.xml')
+            elem = get_elem(self._receive_resp)
+            self._receive_resp = 'receive_resp_02.xml'
 
         return defer.succeed(elem)
 
@@ -146,8 +146,97 @@ class TestCommandResponse(unittest.TestCase):
 
 class TestSingleShotCommand(unittest.TestCase):
 
+    @defer.inlineCallbacks
     def test_run_command(self):
-        SingleShotCommand(FakeRequestSender()).run_command('foo')
+        command = SingleShotCommand(FakeRequestSender())
+        cmd_response = yield command.run_command('foo')
+        self.assertEqual(cmd_response.exit_code, 0)
+        self.assertEqual(cmd_response.stderr, [])
+        expected_stdout = ['"(PDH-CSV 4.0)","\\\\AMAZONA-Q2R281F\\Processor(_T'
+                           'otal)\\% Processor Time"',
+                           '"04/11/2013 17:55:02.335","0.024353"',
+                           'Exiting, please wait...',
+                           'The command completed successfully.']
+        self.assertEqual(cmd_response.stdout, expected_stdout)
+
+
+class TestLongRunningCommand(unittest.TestCase):
+
+    def setUp(self):
+        self._command = LongRunningCommand(FakeRequestSender())
+
+    def tearDown(self):
+        self._command = None
+
+    @defer.inlineCallbacks
+    def test_start(self):
+        yield self._command.start('foo')
+        self.assertEqual(self._command._shell_id,
+                         '81DF6FC4-08CB-4FB4-A75B-33B422885199')
+        self.assertEqual(self._command._command_id,
+                         '75233C4B-10BC-4796-A767-2D95F553DEEC')
+        self.assertIsNone(self._command._exit_code)
+
+    @defer.inlineCallbacks
+    def test_receive(self):
+        yield self._command.start('foo')
+        stdout, stderr = yield self._command.receive()
+        self.assertEqual(stdout, ['"(PDH-CSV 4.0)","\\\\AMAZONA-Q2R281F\\Proce'
+                                  'ssor(_Total)\\% Processor Time"'])
+        self.assertEqual(stderr, [])
+        self.assertIsNone(self._command._exit_code)
+
+    @defer.inlineCallbacks
+    def test_stop(self):
+        yield self._command.start('foo')
+        yield self._command.receive()
+        cmd_response = yield self._command.stop()
+        self.assertEqual(cmd_response.exit_code, 0)
+        self.assertEqual(cmd_response.stderr, [])
+        expected_stdout = ['"04/11/2013 17:55:02.335","0.024353"',
+                           'Exiting, please wait...',
+                           'The command completed successfully.']
+        self.assertEqual(cmd_response.stdout, expected_stdout)
+
+
+class TestTypeperf(unittest.TestCase):
+
+    def setUp(self):
+        self._command = Typeperf(LongRunningCommand(FakeRequestSender()))
+
+    def tearDown(self):
+        self._command = None
+
+    @defer.inlineCallbacks
+    def test_start(self):
+        self.assertEqual(self._command._counters, None)
+        self.assertEqual(self._command._row_count, 0)
+        yield self._command.start(['foo'])
+        self.assertEqual(self._command._counters, ['foo'])
+        self.assertEqual(self._command._row_count, 0)
+
+    @defer.inlineCallbacks
+    def test_receive(self):
+        yield self._command.start(['foo'])
+        dct, stderr = yield self._command.receive()
+        self.assertEqual(dct, dict(foo=[]))
+        self.assertEqual(stderr, [])
+        self.assertEqual(self._command._counters, ['foo'])
+        self.assertEqual(self._command._row_count, 1)
+        dct, stderr = yield self._command.receive()
+        self.assertEqual(dct, dict(foo=[(
+            datetime(2013, 4, 11, 17, 55, 2, 335000), 0.024353)]))
+        self.assertEqual(stderr, [])
+        self.assertEqual(self._command._counters, ['foo'])
+        self.assertEqual(self._command._row_count, 4)
+
+    @defer.inlineCallbacks
+    def test_stop(self):
+        yield self._command.start(['foo'])
+        yield self._command.receive()
+        yield self._command.stop()
+        self.assertEqual(self._command._counters, None)
+        self.assertEqual(self._command._row_count, 0)
 
 if __name__ == '__main__':
     unittest.main()

@@ -26,12 +26,15 @@ def tx_main(args):
     try:
         subscription = create_event_subscription(
             args.remote, args.username, args.password)
-        subscription.subscribe(path='Application', select='*')
-        for i in xrange(10):
+        yield subscription.subscribe(path='Application', select='*')
+        num_pulls = 10
+        for i in xrange(num_pulls):
+            print 'Pull {0} of {1}'.format(i, num_pulls)
             yield task.deferLater(reactor, 1, subscription.pull, pprint_event)
-        subscription.unsubscribe()
+        yield subscription.unsubscribe()
     finally:
-        reactor.stop()
+        if reactor.running:
+            reactor.stop()
 
 
 def parse_args():

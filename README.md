@@ -208,6 +208,36 @@ An example of batch
     Exit code of shell on oakland: 0
 
 
+Typeperf
+--------
+
+txwinrm's typeperf command allows you to run remote a typeperf command, check
+the output periodically, parse it, and print it to stdout. It support the -si
+option and multiple counters. Here is an example:
+
+    $ typeperf -r gilroy -u Administrator -p Z3n0ss '\Processor(_Total)\% Processor Time' '\memory\Available Bytes' '\paging file(_Total)\% Usage'
+    \memory\Available Bytes
+      00:54:27: 193130496.0
+    \paging file(_Total)\% Usage
+      00:54:27: 0.012207
+    \Processor(_Total)\% Processor Time
+      00:54:27: 0.004487
+    \memory\Available Bytes
+      00:54:28: 193216512.0
+      00:54:29: 193982464.0
+    \paging file(_Total)\% Usage
+      00:54:28: 0.012207
+      00:54:29: 0.012207
+    \Processor(_Total)\% Processor Time
+      00:54:28: 1.542879
+      00:54:29: 0.004487
+    \memory\Available Bytes
+      00:54:30: 193933312.0
+      00:54:31: 193941504.0
+    \paging file(_Total)\% Usage
+      00:54:30: 0.012207
+
+
 Feedback
 --------
 
@@ -235,3 +265,13 @@ As of Apr 16, 2013...
     txwinrm/util           89     24    73%
     ---------------------------------------
     TOTAL                 480    104    78%
+
+
+Develop
+-------
+
+Run txwinrm/test/precommit before merging to master. This requires that you...
+
+    easy_install flake8
+    easy_install coverage
+    git clone https://github.com/dgladkov/cyclic_complexity

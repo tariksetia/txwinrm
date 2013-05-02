@@ -204,4 +204,5 @@ def get_datetime(text):
             date_string = text
     else:
         format = '%m/%d/%Y %H:%M:%S.%f'
+        date_string = text
     return datetime.strptime(date_string, format)
