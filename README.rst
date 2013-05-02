@@ -39,8 +39,7 @@ Dependencies
 Configuring the Target Windows Machines
 ---------------------------------------
 
-| You can enable the WinRM service on Windows Server 2003, 2008 and
-2012. Run
+| You can enable the WinRM service on Windows Server 2003, 2008 and 2012. Run
 | Command Prompt as Administrator and execute the following commands
 
 ::
@@ -59,18 +58,15 @@ You can pass a single host and query via the command line...
 
     $ winrm -r host -u user -p passwd -f "select * from Win32_NetworkAdapter"
 
-| ..., or create an ini-style config file and hit multiple targets with
-multiple
+| ..., or create an ini-style config file and hit multiple targets with multiple
 | queries. Example config is at examples/config.ini
 
 ::
 
     $ winrm -c path/to/config.ini
 
-| This will send WinRM enumerate requests to the hosts listed in
-config.ini. It
-| will send a request for each WQL query listed in that file. The output
-will
+| This will send WinRM enumerate requests to the hosts listed in config.ini. It
+| will send a request for each WQL query listed in that file. The output will
 | look like
 
 ::
@@ -100,10 +96,8 @@ Here is an example...
       Name = ALG
     ...
 
-| A summary of the number of failures if any and number of XML elements
-processed
-| appears at the end. The summary and any errors are written to stderr,
-so
+| A summary of the number of failures if any and number of XML elements processed
+| appears at the end. The summary and any errors are written to stderr, so
 | redirect stdin to /dev/null if you want terse output.
 
 ::
@@ -130,8 +124,7 @@ so
           5.38% of CPU time used by WmiPrvSE#1 process with pid 1760
           4.30% of CPU time used by WmiPrvSE#2 process with pid 1268
 
-| The '-d' option increases logging, printing out the XML for all
-requests and
+| The '-d' option increases logging, printing out the XML for all requests and
 | responses, along with the HTTP status code.
 
 WinRS
@@ -230,10 +223,8 @@ An example of batch
 Typeperf
 --------
 
-| txwinrm's typeperf command allows you to run a remote typeperf
-command, check
-| the output periodically, parse it, and print it to stdout. It support
-the -si
+| txwinrm's typeperf command allows you to run a remote typeperf command, check
+| the output periodically, parse it, and print it to stdout. It support the -si
 | option and multiple counters. Here is an example:
 
 ::
