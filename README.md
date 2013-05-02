@@ -11,11 +11,13 @@ Current Feature Support
 * Basic authentication
 * WQL queries
 * WinRS
+* typeperf
+* Subscribe to the Windows Event Log
+
 
 Future Feature Support
 ----------------------
 
-* Subscribe to the Windows Event Log
 * Kerberos authentication (domain accounts)
 * NTLM authentication (local accounts)
 * HTTPS
@@ -211,7 +213,7 @@ An example of batch
 Typeperf
 --------
 
-txwinrm's typeperf command allows you to run remote a typeperf command, check
+txwinrm's typeperf command allows you to run a remote typeperf command, check
 the output periodically, parse it, and print it to stdout. It support the -si
 option and multiple counters. Here is an example:
 
