@@ -20,6 +20,13 @@ from twisted.web.client import Agent
 from twisted.web.http_headers import Headers
 from . import constants as c
 
+KERBEROS_INSTALLED = False
+try:
+    import kerberos
+    KERBEROS_INSTALLED = True
+except ImportError:
+    pass
+
 log = logging.getLogger('zen.winrm')
 _XML_WHITESPACE_PATTERN = re.compile(r'>\s+<')
 _AGENT = None
@@ -124,21 +131,78 @@ def _get_request_template(name):
     return _REQUEST_TEMPLATES[name]
 
 
-def _get_url_and_headers(hostname, username, password):
-    url = "http://{hostname}:5985/wsman".format(hostname=hostname)
-    authstr = "{0}:{1}".format(username, password)
-    auth = 'Basic {0}'.format(base64.encodestring(authstr).strip())
-    headers = Headers({'Content-Type': ['application/soap+xml;charset=UTF-8'],
-                       'Authorization': [auth]})
-    return url, headers
+@defer.inlineCallbacks
+def _get_url_and_headers(hostname, username, password, auth_type='kerberos',
+                         scheme='http', port=5985):
+
+    url = "{scheme}://{hostname}:{port}/wsman".format(
+        scheme=scheme, hostname=hostname, port=port)
+    content_type = {'Content-Type': ['application/soap+xml;charset=UTF-8']}
+    headers = Headers(content_type)
+
+    if auth_type == 'basic':
+        authstr = "{0}:{1}".format(username, password)
+        auth = 'Basic {0}'.format(base64.encodestring(authstr).strip())
+        headers.addRawHeader('Authorization', auth)
+
+    elif auth_type == 'kerberos':
+        if not KERBEROS_INSTALLED:
+            raise Exception('You must run "easy_install kerberos".')
+        service = '{0}@{1}'.format(scheme.upper(), hostname)
+        result, context = kerberos.authGSSClientInit(service)
+        challenge = ''
+        kerberos.authGSSClientStep(context, challenge)
+        base64_client_data = kerberos.authGSSClientResponse(context)
+        auth = 'Kerberos {0}'.format(base64_client_data)
+        k_headers = Headers(content_type)
+        k_headers.addRawHeader('Authorization', auth)
+        k_headers.addRawHeader('Content-Length', '0')
+        response = yield _get_agent().request('POST', url, k_headers, None)
+        if response.code == httplib.UNAUTHORIZED:
+            raise UnauthorizedError(
+                "HTTP Unauthorized received on initial kerberos request.")
+        elif response.code != httplib.OK:
+            proto = _StringProtocol()
+            response.deliverBody(proto)
+            xml_str = yield proto.d
+            raise Exception(
+                "status code {0} received on initial kerberos request {1}"
+                .format(response.code, xml_str))
+        auth_header = response.headers.getRawHeaders('WWW-Authenticate')[0]
+        for field in auth_header.split(','):
+            kind, details = field.strip().split(' ', 1)
+            if kind.lower() == 'kerberos':
+                auth_details = details.strip()
+                break
+        else:
+            raise Exception(
+                'negotiate not found in WWW-Authenticate header: {0}'
+                .format(auth_header))
+        kerberos.authGSSClientStep(context, auth_details)
+        k_username = kerberos.authGSSClientUserName(context)
+        log.info('kerberos auth successful for user: {0} / {1} '
+                  .format(username, k_username))
+        kerberos.authGSSClientClean(context)
+
+    else:
+        raise Exception('unknown auth type: {0}'.format(auth_type))
+
+    defer.returnValue((url, headers))
 
 
 class RequestSender(object):
 
     def __init__(self, hostname, useranme, password):
         self._hostname = hostname
-        self._url, self._headers = _get_url_and_headers(
-            hostname, useranme, password)
+        self._username = useranme
+        self._password = password
+        self._url = None
+        self._headers = None
+
+    @defer.inlineCallbacks
+    def _set_url_and_headers(self):
+        self._url, self._headers = yield _get_url_and_headers(
+            self._hostname, self._username, self._password)
 
     @property
     def hostname(self):
@@ -148,6 +212,8 @@ class RequestSender(object):
     def send_request(self, request_template_name, **kwargs):
         log.debug('sending request: {0} {1}'.format(
             request_template_name, kwargs))
+        if not self._url:
+            yield self._set_url_and_headers()
         request = _get_request_template(request_template_name).format(**kwargs)
         log.debug(request)
         body_producer = _StringProducer(request)
@@ -178,13 +244,16 @@ class _StringProtocol(Protocol):
         self.d.callback(''.join(self._data))
 
 
-class EtreeRequestSender(RequestSender):
+class EtreeRequestSender(object):
     """A request sender that returns an etree element"""
+
+    def __init__(self):
+        self._sender = RequestSender()
 
     @defer.inlineCallbacks
     def send_request(self, request_template_name, **kwargs):
-        resp = yield RequestSender.send_request(
-            self, request_template_name, **kwargs)
+        resp = yield self._sender.send_request(
+            request_template_name, **kwargs)
         proto = _StringProtocol()
         resp.deliverBody(proto)
         xml_str = yield proto.d

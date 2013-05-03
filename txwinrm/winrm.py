@@ -20,7 +20,7 @@ from twisted.internet.error import TimeoutError
 from .enumerate import create_winrm_client
 from .util import UnauthorizedError
 
-logging.basicConfig()
+logging.basicConfig(level=logging.INFO)
 log = logging.getLogger('zen.winrm')
 GLOBAL_ELEMENT_COUNT = 0
 exit_status = 0
