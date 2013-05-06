@@ -87,11 +87,11 @@ class WinrmClient(object):
         defer.returnValue(items)
 
 
-def create_winrm_client(hostname, username, password):
+def create_winrm_client(hostname, username, password, auth_type='kerberos'):
     """
     Constructs a WinRM client with the default response handler.
     """
-    sender = RequestSender(hostname, username, password)
+    sender = RequestSender(hostname, username, password, auth_type)
     return WinrmClient(sender, SaxResponseHandler())
 
 

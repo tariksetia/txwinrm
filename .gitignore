@@ -38,4 +38,4 @@ nosetests.xml
 MANIFEST
 
 cyclic_complexity
-_trial_temp
+_trial_temp*

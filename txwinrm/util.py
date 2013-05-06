@@ -41,6 +41,7 @@ _REQUEST_TEMPLATE_NAMES = (
 _REQUEST_TEMPLATE_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), 'request')
 _REQUEST_TEMPLATES = {}
+_CONTENT_TYPE = {'Content-Type': ['application/soap+xml;charset=UTF-8']}
 
 
 def _get_agent():
@@ -131,78 +132,142 @@ def _get_request_template(name):
     return _REQUEST_TEMPLATES[name]
 
 
-@defer.inlineCallbacks
-def _get_url_and_headers(hostname, username, password, auth_type='kerberos',
-                         scheme='http', port=5985):
+def _get_basic_auth_header(username, password):
+    authstr = "{0}:{1}".format(username, password)
+    return 'Basic {0}'.format(base64.encodestring(authstr).strip())
 
+
+class AuthGSSClient(object):
+    """
+    Operates on a context for GSSAPI client-side authentication with the given
+    service principal.
+
+    GSSAPI Function Result Codes:
+        -1 : Error
+        0  : GSSAPI step continuation (only returned by 'Step' function)
+        1  : GSSAPI step complete, or function return OK
+    """
+
+    def __init__(self, service):
+        """
+        @param service: a string containing the service principal in the form
+            'type@fqdn' (e.g. 'imap@mail.apple.com').
+        """
+        self._service = service
+        result_code, self._context = kerberos.authGSSClientInit(service)
+        if result_code != kerberos.AUTH_GSS_COMPLETE:
+            raise Exception('kerberos authGSSClientInit failed')
+
+    def __del__(self):
+        result_code = kerberos.authGSSClientClean(self._context)
+        if result_code != kerberos.AUTH_GSS_COMPLETE:
+            raise Exception('kerberos authGSSClientClean failed')
+
+    def _step(self, challenge=''):
+        """
+        Processes a single GSSAPI client-side step using the supplied server
+        data.
+
+        @param challenge: a string containing the base64-encoded server data
+            (which may be empty for the first step).
+        @return:          a result code
+        """
+        return kerberos.authGSSClientStep(self._context, challenge)
+
+    def get_base64_client_data(self):
+        """
+        @return: a string containing the base64-encoded client data to be sent
+            to the server.
+        """
+        result_code = self._step()
+        if result_code != kerberos.AUTH_GSS_CONTINUE:
+            raise Exception('kerberos authGSSClientStep failed ({0}).'
+                            .format(result_code))
+        return kerberos.authGSSClientResponse(self._context)
+
+    def get_username(self, challenge):
+        """
+        Get the user name of the principal authenticated via the now complete
+        GSSAPI client-side operations.
+
+        @param challenge: a string containing the base64-encoded server data
+        @return:          a string containing the user name.
+        """
+        result_code = self._step(challenge)
+        if result_code != kerberos.AUTH_GSS_COMPLETE:
+            raise Exception('kerberos authGSSClientStep failed ({0}). '
+                            'challenge={1}'
+                            .format(result_code, challenge))
+        return kerberos.authGSSClientUserName(self._context)
+
+
+@defer.inlineCallbacks
+def _authenticate_with_kerberos(scheme, hostname, url, username):
+    if not KERBEROS_INSTALLED:
+        raise Exception('You must run "easy_install kerberos".')
+    service = '{0}@{1}'.format(scheme.upper(), hostname)
+    gss_client = AuthGSSClient(service)
+    base64_client_data = gss_client.get_base64_client_data()
+    auth = 'Kerberos {0}'.format(base64_client_data)
+    k_headers = Headers(_CONTENT_TYPE)
+    k_headers.addRawHeader('Authorization', auth)
+    k_headers.addRawHeader('Content-Length', '0')
+    response = yield _get_agent().request('POST', url, k_headers, None)
+    if response.code == httplib.UNAUTHORIZED:
+        raise UnauthorizedError(
+            "HTTP Unauthorized received on initial kerberos request.")
+    elif response.code != httplib.OK:
+        proto = _StringProtocol()
+        response.deliverBody(proto)
+        xml_str = yield proto.d
+        raise Exception(
+            "status code {0} received on initial kerberos request {1}"
+            .format(response.code, xml_str))
+    auth_header = response.headers.getRawHeaders('WWW-Authenticate')[0]
+    for field in auth_header.split(','):
+        kind, details = field.strip().split(' ', 1)
+        if kind.lower() == 'kerberos':
+            auth_details = details.strip()
+            break
+    else:
+        raise Exception(
+            'negotiate not found in WWW-Authenticate header: {0}'
+            .format(auth_header))
+    k_username = gss_client.get_username(auth_details)
+    log.info('kerberos auth successful for user: {0} / {1} '
+             .format(username, k_username))
+
+
+@defer.inlineCallbacks
+def _get_url_and_headers(hostname, username, password, auth_type,
+                         scheme='http', port=5985):
     url = "{scheme}://{hostname}:{port}/wsman".format(
         scheme=scheme, hostname=hostname, port=port)
-    content_type = {'Content-Type': ['application/soap+xml;charset=UTF-8']}
-    headers = Headers(content_type)
-
+    headers = Headers(_CONTENT_TYPE)
     if auth_type == 'basic':
-        authstr = "{0}:{1}".format(username, password)
-        auth = 'Basic {0}'.format(base64.encodestring(authstr).strip())
-        headers.addRawHeader('Authorization', auth)
-
+        headers.addRawHeader('Authorization',
+                             _get_basic_auth_header(username, password))
     elif auth_type == 'kerberos':
-        if not KERBEROS_INSTALLED:
-            raise Exception('You must run "easy_install kerberos".')
-        service = '{0}@{1}'.format(scheme.upper(), hostname)
-        result, context = kerberos.authGSSClientInit(service)
-        challenge = ''
-        kerberos.authGSSClientStep(context, challenge)
-        base64_client_data = kerberos.authGSSClientResponse(context)
-        auth = 'Kerberos {0}'.format(base64_client_data)
-        k_headers = Headers(content_type)
-        k_headers.addRawHeader('Authorization', auth)
-        k_headers.addRawHeader('Content-Length', '0')
-        response = yield _get_agent().request('POST', url, k_headers, None)
-        if response.code == httplib.UNAUTHORIZED:
-            raise UnauthorizedError(
-                "HTTP Unauthorized received on initial kerberos request.")
-        elif response.code != httplib.OK:
-            proto = _StringProtocol()
-            response.deliverBody(proto)
-            xml_str = yield proto.d
-            raise Exception(
-                "status code {0} received on initial kerberos request {1}"
-                .format(response.code, xml_str))
-        auth_header = response.headers.getRawHeaders('WWW-Authenticate')[0]
-        for field in auth_header.split(','):
-            kind, details = field.strip().split(' ', 1)
-            if kind.lower() == 'kerberos':
-                auth_details = details.strip()
-                break
-        else:
-            raise Exception(
-                'negotiate not found in WWW-Authenticate header: {0}'
-                .format(auth_header))
-        kerberos.authGSSClientStep(context, auth_details)
-        k_username = kerberos.authGSSClientUserName(context)
-        log.info('kerberos auth successful for user: {0} / {1} '
-                  .format(username, k_username))
-        kerberos.authGSSClientClean(context)
-
+        yield _authenticate_with_kerberos(scheme, hostname, url, username)
     else:
         raise Exception('unknown auth type: {0}'.format(auth_type))
-
     defer.returnValue((url, headers))
 
 
 class RequestSender(object):
 
-    def __init__(self, hostname, useranme, password):
+    def __init__(self, hostname, username, password, auth_type):
         self._hostname = hostname
-        self._username = useranme
+        self._username = username
         self._password = password
+        self._auth_type = auth_type
         self._url = None
         self._headers = None
 
     @defer.inlineCallbacks
     def _set_url_and_headers(self):
         self._url, self._headers = yield _get_url_and_headers(
-            self._hostname, self._username, self._password)
+            self._hostname, self._username, self._password, self._auth_type)
 
     @property
     def hostname(self):
@@ -247,8 +312,8 @@ class _StringProtocol(Protocol):
 class EtreeRequestSender(object):
     """A request sender that returns an etree element"""
 
-    def __init__(self):
-        self._sender = RequestSender()
+    def __init__(self, hostname, username, password, auth_type):
+        self._sender = RequestSender(hostname, username, password, auth_type)
 
     @defer.inlineCallbacks
     def send_request(self, request_template_name, **kwargs):
