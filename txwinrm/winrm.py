@@ -11,19 +11,14 @@
 Use twisted web client to enumerate/pull WQL query.
 """
 
-import logging
 import sys
-from argparse import ArgumentParser
-from ConfigParser import RawConfigParser
-from twisted.internet import reactor, defer
+from twisted.internet import defer
 from twisted.internet.error import TimeoutError
+from . import app
 from .enumerate import create_winrm_client
 from .util import UnauthorizedError
 
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger('zen.winrm')
 GLOBAL_ELEMENT_COUNT = 0
-exit_status = 0
 
 
 def get_vmpeak():
@@ -93,12 +88,13 @@ def calculate_remote_cpu_util(initial_stats, final_stats):
 def get_initial_wmiprvse_stats(config):
     initial_wmiprvse_stats = {}
     good_hosts = []
-    for hostname, (username, password) in config.hosts.iteritems():
+    for hostname, (auth_type, username, password) in config.hosts.iteritems():
         try:
-            client = create_winrm_client(hostname, username, password)
+            client = create_winrm_client(
+                hostname, auth_type, username, password)
             initial_wmiprvse_stats[hostname] = \
                 yield get_remote_process_stats(client)
-            good_hosts.append((hostname, username, password))
+            good_hosts.append((hostname, auth_type, username, password))
         except UnauthorizedError:
             continue
         except TimeoutError:
@@ -110,8 +106,8 @@ def get_initial_wmiprvse_stats(config):
 def print_summary(results, config, initial_wmiprvse_stats, good_hosts):
     global exit_status
     final_wmiprvse_stats = {}
-    for hostname, username, password in good_hosts:
-        client = create_winrm_client(hostname, username, password)
+    for hostname, auth_type, username, password in good_hosts:
+        client = create_winrm_client(hostname, auth_type, username, password)
         final_wmiprvse_stats[hostname] = \
             yield get_remote_process_stats(client)
     print >>sys.stderr, '\nSummary:'
@@ -133,22 +129,22 @@ def print_summary(results, config, initial_wmiprvse_stats, good_hosts):
 
 
 @defer.inlineCallbacks
-def send_requests(config, do_summary):
-    global exit_status
+def tx_main(config):
+    do_summary = len(config.hosts) > 1
     if do_summary:
         initial_wmiprvse_stats, good_hosts = \
             yield get_initial_wmiprvse_stats(config)
     else:
         initial_wmiprvse_stats = None
-        hostname, (username, password) = config.hosts.items()[0]
+        hostname, (auth_type, username, password) = config.hosts.items()[0]
         good_hosts = [(hostname, username, password)]
     if not good_hosts:
-        exit_status = 1
-        reactor.stop()
+        app.exit_status = 1
+        app.stop_reactor()
         return
     ds = []
-    for hostname, username, password in good_hosts:
-        client = create_winrm_client(hostname, username, password)
+    for hostname, auth_type, username, password in good_hosts:
+        client = create_winrm_client(hostname, auth_type, username, password)
         for wql in config.wqls:
             d = client.enumerate(wql)
             d.addCallback(print_items, hostname, wql, do_summary)
@@ -161,71 +157,17 @@ def send_requests(config, do_summary):
             yield print_summary(
                 results, config, initial_wmiprvse_stats, good_hosts)
 
-    def stop_reactor(results):
-        reactor.stop()
-
     dl.addCallback(dl_callback)
-    dl.addBoth(stop_reactor)
+    dl.addBoth(app.stop_reactor)
 
 
-class Config(object):
-    pass
-
-
-def parse_config_file(filename):
-    parser = RawConfigParser(allow_no_value=True)
-    parser.read(filename)
-    creds = {}
-    index = dict(hostname=0, password=1)
-    for key, value in parser.items('credentials'):
-        k1, k2 = key.split('.')
-        if k1 not in creds:
-            creds[k1] = [None, None]
-        creds[k1][index[k2]] = value
-    config = Config()
-    config.hosts = {}
-    for hostname, cred_key in parser.items('targets'):
-        config.hosts[hostname] = (creds[cred_key])
-    config.wqls = parser.options('wqls')
-    return config
-
-
-def adapt_args_to_config(args):
-    config = Config()
-    config.hosts = {args.remote: (args.username, args.password)}
-    config.wqls = [args.filter]
-    return config
-
-
-def parse_args():
-    parser = ArgumentParser()
-    parser.add_argument("--debug", "-d", action="store_true")
-    parser.add_argument("--config", "-c")
-    parser.add_argument("--remote", "-r")
-    parser.add_argument("--username", "-u")
-    parser.add_argument("--password", "-p")
+def add_args(parser):
     parser.add_argument("--filter", "-f")
-    return parser.parse_args()
 
 
-def main():
-    args = parse_args()
-    if args.debug:
-        log.setLevel(level=logging.DEBUG)
-        defer.setDebugging(True)
-    if args.config:
-        config = parse_config_file(args.config)
-        do_summary = True
-    elif args.remote and args.username and args.password and args.filter:
-        config = adapt_args_to_config(args)
-        do_summary = False
-    else:
-        print >>sys.stderr, "ERROR: You must specify a config file with -c " \
-                            "or specify remote, username, password and filter"
-        sys.exit(1)
-    reactor.callWhenRunning(send_requests, config, do_summary)
-    reactor.run()
-    sys.exit(exit_status)
+def check_args_func(args):
+    return bool(args.filter)
+
 
 if __name__ == '__main__':
-    main()
+    app.main(tx_main, add_args, check_args_func)

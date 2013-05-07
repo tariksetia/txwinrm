@@ -9,15 +9,12 @@
 
 import sys
 import cmd
-import logging
 from pprint import pprint
 from argparse import ArgumentParser
 from twisted.internet import reactor, defer, task, threads
+from . import app
 from .shell import create_long_running_command, create_single_shot_command, \
     create_remote_shell
-
-logging.basicConfig()
-log = logging.getLogger('zen.winrm')
 
 
 def print_output(stdout, stderr):

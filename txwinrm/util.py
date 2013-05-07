@@ -15,7 +15,7 @@ import httplib
 from datetime import datetime
 from xml.etree import cElementTree as ET
 from twisted.internet import reactor, defer
-from twisted.internet.protocol import Protocol
+from twisted.internet.protocol import Protocol, ProcessProtocol
 from twisted.web.client import Agent
 from twisted.web.http_headers import Headers
 from . import constants as c
@@ -42,6 +42,7 @@ _REQUEST_TEMPLATE_DIR = os.path.join(
     os.path.dirname(os.path.abspath(__file__)), 'request')
 _REQUEST_TEMPLATES = {}
 _CONTENT_TYPE = {'Content-Type': ['application/soap+xml;charset=UTF-8']}
+_MAX_KERBEROS_RETRIES = 3
 
 
 def _get_agent():
@@ -137,10 +138,40 @@ def _get_basic_auth_header(username, password):
     return 'Basic {0}'.format(base64.encodestring(authstr).strip())
 
 
+class KinitProcessProtocol(ProcessProtocol):
+
+    def __init__(self, password):
+        self._password = password
+        self.d = defer.Deferred()
+
+    def outReceived(self, data):
+        log.debug("kinit wrote to stdout: {0}".format(data))
+        if 'Password for' in data:
+            self.transport.write('{0}\n'.format(self._password))
+
+    def errReceived(self, data):
+        log.debug("kinit wrote to stdin: {0}".format(data))
+
+    def processEnded(self, reason):
+        self.d.callback(None)
+
+
+@defer.inlineCallbacks
+def kinit(username, password):
+    kinit = '/usr/bin/kinit'
+    userid, realm = username.split('@')
+    args = [kinit, '{0}@{1}'.format(userid, realm.upper())]
+    log.debug('spawing kinit process: {0}'.format(args))
+    protocol = KinitProcessProtocol(password)
+    reactor.spawnProcess(protocol, kinit, args)
+    yield protocol.d
+
+
 class AuthGSSClient(object):
     """
-    Operates on a context for GSSAPI client-side authentication with the given
-    service principal.
+    The Generic Security Services (GSS) API allows Kerberos implementations to
+    be API compatible. Instances of this class operate on a context for GSSAPI
+    client-side authentication with the given service principal.
 
     GSSAPI Function Result Codes:
         -1 : Error
@@ -148,12 +179,14 @@ class AuthGSSClient(object):
         1  : GSSAPI step complete, or function return OK
     """
 
-    def __init__(self, service):
+    def __init__(self, service, username, password):
         """
         @param service: a string containing the service principal in the form
             'type@fqdn' (e.g. 'imap@mail.apple.com').
         """
         self._service = service
+        self._username = username
+        self._password = password
         result_code, self._context = kerberos.authGSSClientInit(service)
         if result_code != kerberos.AUTH_GSS_COMPLETE:
             raise Exception('kerberos authGSSClientInit failed')
@@ -172,18 +205,28 @@ class AuthGSSClient(object):
             (which may be empty for the first step).
         @return:          a result code
         """
+        log.debug('GSSAPI step challenge="{0}"'.format(challenge))
         return kerberos.authGSSClientStep(self._context, challenge)
 
+    @defer.inlineCallbacks
     def get_base64_client_data(self):
         """
         @return: a string containing the base64-encoded client data to be sent
             to the server.
         """
-        result_code = self._step()
+        result_code = None
+        for i in xrange(_MAX_KERBEROS_RETRIES):
+            try:
+                result_code = self._step()
+                break
+            except kerberos.GSSError as e:
+                log.debug('{0}. Calling kinit.'.format(e.args[1][0]))
+                yield kinit(self._username, self._password)
         if result_code != kerberos.AUTH_GSS_CONTINUE:
             raise Exception('kerberos authGSSClientStep failed ({0}).'
                             .format(result_code))
-        return kerberos.authGSSClientResponse(self._context)
+        base64_client_data = kerberos.authGSSClientResponse(self._context)
+        defer.returnValue(base64_client_data)
 
     def get_username(self, challenge):
         """
@@ -202,12 +245,12 @@ class AuthGSSClient(object):
 
 
 @defer.inlineCallbacks
-def _authenticate_with_kerberos(scheme, hostname, url, username):
+def _authenticate_with_kerberos(hostname, username, password, scheme, url):
     if not KERBEROS_INSTALLED:
         raise Exception('You must run "easy_install kerberos".')
     service = '{0}@{1}'.format(scheme.upper(), hostname)
-    gss_client = AuthGSSClient(service)
-    base64_client_data = gss_client.get_base64_client_data()
+    gss_client = AuthGSSClient(service, username, password)
+    base64_client_data = yield gss_client.get_base64_client_data()
     auth = 'Kerberos {0}'.format(base64_client_data)
     k_headers = Headers(_CONTENT_TYPE)
     k_headers.addRawHeader('Authorization', auth)
@@ -234,12 +277,12 @@ def _authenticate_with_kerberos(scheme, hostname, url, username):
             'negotiate not found in WWW-Authenticate header: {0}'
             .format(auth_header))
     k_username = gss_client.get_username(auth_details)
-    log.info('kerberos auth successful for user: {0} / {1} '
-             .format(username, k_username))
+    log.debug('kerberos auth successful for user: {0} / {1} '
+              .format(username, k_username))
 
 
 @defer.inlineCallbacks
-def _get_url_and_headers(hostname, username, password, auth_type,
+def _get_url_and_headers(hostname, auth_type, username, password,
                          scheme='http', port=5985):
     url = "{scheme}://{hostname}:{port}/wsman".format(
         scheme=scheme, hostname=hostname, port=port)
@@ -248,7 +291,8 @@ def _get_url_and_headers(hostname, username, password, auth_type,
         headers.addRawHeader('Authorization',
                              _get_basic_auth_header(username, password))
     elif auth_type == 'kerberos':
-        yield _authenticate_with_kerberos(scheme, hostname, url, username)
+        yield _authenticate_with_kerberos(
+            hostname, username, password, scheme, url)
     else:
         raise Exception('unknown auth type: {0}'.format(auth_type))
     defer.returnValue((url, headers))
@@ -256,18 +300,18 @@ def _get_url_and_headers(hostname, username, password, auth_type,
 
 class RequestSender(object):
 
-    def __init__(self, hostname, username, password, auth_type):
+    def __init__(self, hostname, auth_type, username, password):
         self._hostname = hostname
+        self._auth_type = auth_type
         self._username = username
         self._password = password
-        self._auth_type = auth_type
         self._url = None
         self._headers = None
 
     @defer.inlineCallbacks
     def _set_url_and_headers(self):
         self._url, self._headers = yield _get_url_and_headers(
-            self._hostname, self._username, self._password, self._auth_type)
+            self._hostname, self._auth_type, self._username, self._password)
 
     @property
     def hostname(self):
