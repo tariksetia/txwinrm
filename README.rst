@@ -272,6 +272,19 @@ option and multiple counters. Here is an example:
       00:54:30: 0.012207
 
 
+Subscribing to the Windows Event Log
+------------------------------------
+
+The following command shows an example of subscribing to the Windows event log:
+
+::
+
+    $ wecutil -r saratoga -u Administrator
+    Pull #1
+    Event(system=System(provider='Microsoft-Windows-EventForwarder', event_id=111, event_id_qualifiers=None, level=None, task=None, keywords=None, time_created=datetime.datetime(2013, 5, 8, 20, 29, 31, 132000), event_record_id=None, channel=None, computer='saratoga.solutions.loc', user_id=None), data=None, rendering_info=None)
+    Pull #2
+
+
 Feedback
 --------
 
