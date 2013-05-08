@@ -129,14 +129,18 @@ def tx_main(args, config):
 def add_args(parser):
     parser.add_argument("kind", nargs=1, default="interactive",
                         choices=["interactive", "single", "batch", "long"])
-    parser.add_argument("--command", "-x", required=True)
+    parser.add_argument("--command", "-x")
 
 
 def check_args(args):
-    if args.config:
+    if not args.command and args.kind in ["single", "batch", "long"]:
+        print >>sys.stderr, "ERROR: {0} requires that you specify a command."
+        return False
+    elif args.config:
         print >>sys.stderr, "ERROR: The winrs command does not support " \
                             "a configuration file at this time."
-    return not args.config
+        return False
+    return True
 
 if __name__ == '__main__':
     app.main(tx_main, add_args, check_args)

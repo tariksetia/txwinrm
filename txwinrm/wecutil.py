@@ -7,13 +7,13 @@
 #
 ##############################################################################
 
+import sys
 import logging
 from pprint import pprint
-from argparse import ArgumentParser
 from twisted.internet import reactor, defer, task
+from . import app
 from .subscribe import create_event_subscription
 
-logging.basicConfig()
 log = logging.getLogger('zen.winrm')
 
 
@@ -22,14 +22,18 @@ def pprint_event(event):
 
 
 @defer.inlineCallbacks
-def tx_main(args):
+def tx_main(args, config):
     try:
         subscription = create_event_subscription(
-            args.remote, args.username, args.password)
-        yield subscription.subscribe(path='Application', select='*')
-        num_pulls = 10
-        for i in xrange(num_pulls):
-            print 'Pull {0} of {1}'.format(i, num_pulls)
+            args.remote, args.authentication, args.username, args.password)
+        yield subscription.subscribe(path=args.path, select=args.select)
+        i = 0
+        while args.num_pulls == 0 or i < args.num_pulls:
+            i += 1
+            sys.stdout.write('Pull #{0}'.format(i))
+            if args.num_pulls > 0:
+                sys.stdout.write(' of {0}'.format(args.num_pulls))
+            print
             yield task.deferLater(reactor, 1, subscription.pull, pprint_event)
         yield subscription.unsubscribe()
     finally:
@@ -37,23 +41,17 @@ def tx_main(args):
             reactor.stop()
 
 
-def parse_args():
-    parser = ArgumentParser()
-    parser.add_argument("--debug", "-d", action="store_true")
-    parser.add_argument("--config", "-c")
-    parser.add_argument("--remote", "-r")
-    parser.add_argument("--username", "-u")
-    parser.add_argument("--password", "-p")
-    return parser.parse_args()
+def add_args(parser):
+    parser.add_argument("--path", "-p", default='Application')
+    parser.add_argument("--select", "-s", default='*')
+    parser.add_argument("--num-pulls", "-n", type=int, default=0)
 
 
-def main():
-    args = parse_args()
-    if args.debug:
-        log.setLevel(level=logging.DEBUG)
-        defer.setDebugging(True)
-    reactor.callWhenRunning(tx_main, args)
-    reactor.run()
+def check_args(args):
+    if args.config:
+        print >>sys.stderr, "ERROR: The typeperf command does not support " \
+                            "a configuration file at this time."
+    return not args.config
 
 if __name__ == '__main__':
-    main()
+    app.main(tx_main, add_args, check_args)

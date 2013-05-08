@@ -9,21 +9,24 @@
 
 import sys
 import logging
-from argparse import ArgumentParser
 from datetime import datetime
 from twisted.internet import reactor, defer, task
+from . import app
 from .shell import create_typeperf
 
-logging.basicConfig()
 log = logging.getLogger('zen.winrm')
 
 
 @defer.inlineCallbacks
-def tx_main(args):
+def tx_main(args, config):
     try:
-        typeperf = create_typeperf(args.remote, args.username, args.password)
+        typeperf = create_typeperf(
+            args.remote, args.authentication, args.username, args.password)
         yield typeperf.start(args.counters, args.si)
-        for i in xrange(args.sc):
+        i = 0
+        while args.sc == 0 or i < args.sc:
+            if args.sc > 0:
+                i += 1
             results, stderr = yield task.deferLater(
                 reactor, args.si, typeperf.receive)
             for key, values in results.iteritems():
@@ -38,26 +41,20 @@ def tx_main(args):
         reactor.stop()
 
 
-def parse_args():
-    parser = ArgumentParser()
-    parser.add_argument("--debug", "-d", action="store_true")
-    parser.add_argument("--config", "-c")
-    parser.add_argument("--remote", "-r")
-    parser.add_argument("--username", "-u")
-    parser.add_argument("--password", "-p")
-    parser.add_argument("--si", type=int, default=1)
-    parser.add_argument("--sc", type=int, default=5)
-    parser.add_argument("counters", nargs='+')
-    return parser.parse_args()
+def add_args(parser):
+    parser.add_argument("--si", type=int, default=1,
+                        help="time between samples in seconds")
+    parser.add_argument("--sc", type=int, default=0,
+                        help="number of samples to collect")
+    parser.add_argument("counters", nargs='+',
+                        help="performance counter paths to log")
 
 
-def main():
-    args = parse_args()
-    if args.debug:
-        log.setLevel(level=logging.DEBUG)
-        defer.setDebugging(True)
-    reactor.callWhenRunning(tx_main, args)
-    reactor.run()
+def check_args(args):
+    if args.config:
+        print >>sys.stderr, "ERROR: The typeperf command does not support " \
+                            "a configuration file at this time."
+    return not args.config
 
 if __name__ == '__main__':
-    main()
+    app.main(tx_main, add_args, check_args)

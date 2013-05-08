@@ -267,9 +267,9 @@ class Typeperf(object):
         self._row_count = 0
 
 
-def create_typeperf(hostname, username, password):
+def create_typeperf(hostname, auth_type, username, password):
     long_running_command = create_long_running_command(
-        hostname, username, password)
+        hostname, auth_type, username, password)
     return Typeperf(long_running_command)
 
 
