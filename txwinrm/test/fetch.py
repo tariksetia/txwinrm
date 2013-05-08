@@ -2,8 +2,8 @@
 #
 # Copyright (C) Zenoss, Inc. 2013, all rights reserved.
 #
-# This content is made available according to terms specified in
-# License.zenoss under the directory where your Zenoss product is installed.
+# This content is made available according to terms specified in the LICENSE
+# file at the top-level directory of this package.
 #
 ##############################################################################
 
@@ -22,6 +22,7 @@ import os
 import re
 import errno
 import logging
+from getpass import getpass
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol
 from ..enumerate import WinrmClient, create_winrm_client, \
@@ -30,8 +31,9 @@ from ..enumerate import WinrmClient, create_winrm_client, \
 logging.basicConfig(level=logging.INFO)
 
 HOSTNAME = 'oakland'
+AUTH_TYPE = 'basic'
 USERNAME = 'Administrator'
-PASSWORD = 'Z3n0ss'
+PASSWORD = None
 
 CIM_CLASSES = [
     'Win32_LogicalDisk',
@@ -107,14 +109,14 @@ class WriteXmlToFileHandler(object):
 def do_enumerate(dirname, cim_class, props, query_type):
     wql = 'select {0} from {1}'.format(props, cim_class)
     handler = WriteXmlToFileHandler(dirname, cim_class, query_type)
-    client = WinrmClient(HOSTNAME, USERNAME, PASSWORD, handler)
+    client = WinrmClient(HOSTNAME, AUTH_TYPE, USERNAME, PASSWORD, handler)
     items = yield client.enumerate(wql)
     defer.returnValue(items)
 
 
 @defer.inlineCallbacks
 def get_subdirname():
-    client = create_winrm_client(HOSTNAME, USERNAME, PASSWORD)
+    client = create_winrm_client(HOSTNAME, AUTH_TYPE, USERNAME, PASSWORD)
     wql = 'select Caption from Win32_OperatingSystem'
     items = yield client.enumerate(wql)
     match = re.search(r'(2003|2008|2012)', items[0].Caption)
@@ -140,6 +142,8 @@ def fetch():
 
 
 def main():
+    global PASSWORD
+    PASSWORD = getpass()
     reactor.callWhenRunning(fetch)
     reactor.run()
 

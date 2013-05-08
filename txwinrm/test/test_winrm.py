@@ -6,3 +6,15 @@
 # file at the top-level directory of this package.
 #
 ##############################################################################
+
+from twisted.trial import unittest
+from .. import winrm
+
+
+class TestApp(unittest.TestCase):
+
+    def test_winrm(self):
+        winrm
+
+if __name__ == '__main__':
+    unittest.main()

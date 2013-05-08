@@ -6,3 +6,15 @@
 # file at the top-level directory of this package.
 #
 ##############################################################################
+
+from twisted.trial import unittest
+from .. import winrs
+
+
+class TestApp(unittest.TestCase):
+
+    def test_winrs(self):
+        winrs
+
+if __name__ == '__main__':
+    unittest.main()

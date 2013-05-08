@@ -6,3 +6,15 @@
 # file at the top-level directory of this package.
 #
 ##############################################################################
+
+from twisted.trial import unittest
+from .. import wecutil
+
+
+class TestApp(unittest.TestCase):
+
+    def test_wecutil(self):
+        wecutil
+
+if __name__ == '__main__':
+    unittest.main()
