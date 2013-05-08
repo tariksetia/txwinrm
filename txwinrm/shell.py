@@ -162,8 +162,8 @@ class SingleShotCommand(object):
         yield self._sender.send_request('delete', shell_id=shell_id)
 
 
-def create_single_shot_command(hostname, username, password):
-    sender = EtreeRequestSender(hostname, username, password)
+def create_single_shot_command(hostname, auth_type, username, password):
+    sender = EtreeRequestSender(hostname, auth_type, username, password)
     return SingleShotCommand(sender)
 
 
@@ -217,8 +217,8 @@ class LongRunningCommand(object):
         defer.returnValue(CommandResponse(stdout, stderr, self._exit_code))
 
 
-def create_long_running_command(hostname, username, password):
-    sender = EtreeRequestSender(hostname, username, password)
+def create_long_running_command(hostname, auth_type, username, password):
+    sender = EtreeRequestSender(hostname, auth_type, username, password)
     return LongRunningCommand(sender)
 
 
@@ -401,6 +401,6 @@ class RemoteShell(object):
 
 
 def create_remote_shell(
-        hostname, username, password, include_exit_codes=False):
-    sender = EtreeRequestSender(hostname, username, password)
+        hostname, auth_type, username, password, include_exit_codes=False):
+    sender = EtreeRequestSender(hostname, auth_type, username, password)
     return RemoteShell(sender, include_exit_codes)

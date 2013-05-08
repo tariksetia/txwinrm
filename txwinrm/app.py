@@ -27,25 +27,20 @@ def _parse_config_file(filename):
     parser = RawConfigParser(allow_no_value=True)
     parser.read(filename)
     creds = {}
-    index = dict(authentication=0, hostname=1, password=2)
+    index = dict(authentication=0, username=1)
     for key, value in parser.items('credentials'):
         k1, k2 = key.split('.')
         if k1 not in creds:
             creds[k1] = [None, None, None]
         creds[k1][index[k2]] = value
+        if k2 == 'username':
+            creds[k1][2] = getpass('{0} password ({1} credentials):'
+                                   .format(value, k1))
     config = Config()
     config.hosts = {}
     for hostname, cred_key in parser.items('targets'):
         config.hosts[hostname] = (creds[cred_key])
     config.wqls = parser.options('wqls')
-    return config
-
-
-def _adapt_args_to_config(args):
-    config = Config()
-    config.hosts = \
-        {args.remote: (args.authentication, args.username, args.password)}
-    config.wqls = [args.filter]
     return config
 
 
@@ -68,15 +63,16 @@ def main(tx_main_func, add_args_func, check_args_func=lambda x: True):
         defer.setDebugging(True)
     if args.config:
         config = _parse_config_file(args.config)
-    elif args.remote and args.username and check_args_func(args):
-        args.password = getpass()
-        config = _adapt_args_to_config(args)
     else:
-        print >>sys.stderr, "ERROR: You must specify a config file with -c " \
-                            "or specify remote, username, and other " \
-                            "required options"
-        sys.exit(1)
-    reactor.callWhenRunning(tx_main_func, config)
+        if not args.remote or not args.username:
+            print >>sys.stderr, "ERROR: You must specify a config file with " \
+                                "-c or specify remote and username"
+            sys.exit(1)
+        if not check_args_func(args):
+            sys.exit(1)
+        config = None
+        args.password = getpass()
+    reactor.callWhenRunning(tx_main_func, args, config)
     reactor.run()
     sys.exit(_exit_status)
 

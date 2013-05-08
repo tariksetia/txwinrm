@@ -10,7 +10,6 @@
 import sys
 import cmd
 from pprint import pprint
-from argparse import ArgumentParser
 from twisted.internet import reactor, defer, task, threads
 from . import app
 from .shell import create_long_running_command, create_single_shot_command, \
@@ -59,7 +58,7 @@ class WinrsCmd(cmd.Cmd):
 def long_running_main(args):
     try:
         client = create_long_running_command(
-            args.remote, args.username, args.password)
+            args.remote, args.authentication, args.username, args.password)
         yield client.start(args.command)
         for i in xrange(5):
             stdout, stderr = yield task.deferLater(
@@ -73,7 +72,8 @@ def long_running_main(args):
 @defer.inlineCallbacks
 def interactive_main(args):
     remote = args.remote
-    shell = create_remote_shell(remote, args.username, args.password)
+    shell = create_remote_shell(
+        remote, args.authentication, args.username, args.password)
     response = yield shell.create()
     intro = '\n'.join(response.stdout)
     winrs_cmd = WinrsCmd(shell)
@@ -85,7 +85,8 @@ def batch_main(args):
     remote = args.remote
     command = args.command
     try:
-        shell = create_remote_shell(remote, args.username, args.password)
+        shell = create_remote_shell(
+            remote, args.authentication, args.username, args.password)
         print 'Creating shell on {0}.'.format(remote)
         yield shell.create()
         for i in range(2):
@@ -107,43 +108,35 @@ def batch_main(args):
 def single_shot_main(args):
     try:
         client = create_single_shot_command(
-            args.remote, args.username, args.password)
+            args.remote, args.authentication, args.username, args.password)
         results = yield client.run_command(args.command)
         pprint(results)
     finally:
         reactor.stop()
 
 
-def parse_args():
-    parser = ArgumentParser()
-    parser.add_argument("--debug", "-d", action="store_true")
-    parser.add_argument("--interactive", "-i", action="store_true")
-    parser.add_argument("--single-shot", "-s", action="store_true")
-    parser.add_argument("--batch", "-b", action="store_true")
-    parser.add_argument("--long-running", "-l", action="store_true")
-    parser.add_argument("--config", "-c")
-    parser.add_argument("--remote", "-r")
-    parser.add_argument("--username", "-u")
-    parser.add_argument("--password", "-p")
-    parser.add_argument("--command", "-x")
-    return parser.parse_args()
-
-
-def main():
-    args = parse_args()
-    if args.debug:
-        log.setLevel(level=logging.DEBUG)
-        defer.setDebugging(True)
-    if args.interactive:
-        tx_main = interactive_main
-    elif args.single_shot:
-        tx_main = single_shot_main
-    elif args.batch:
-        tx_main = batch_main
+def tx_main(args, config):
+    if args.kind[0] == "long":
+        long_running_main(args)
+    elif args.kind[0] == "single":
+        single_shot_main(args)
+    elif args.kind[0] == "batch":
+        batch_main(args)
     else:
-        tx_main = long_running_main
-    reactor.callWhenRunning(tx_main, args)
-    reactor.run()
+        interactive_main(args)
+
+
+def add_args(parser):
+    parser.add_argument("kind", nargs=1, default="interactive",
+                        choices=["interactive", "single", "batch", "long"])
+    parser.add_argument("--command", "-x", required=True)
+
+
+def check_args(args):
+    if args.config:
+        print >>sys.stderr, "ERROR: The winrs command does not support " \
+                            "a configuration file at this time."
+    return not args.config
 
 if __name__ == '__main__':
-    main()
+    app.main(tx_main, add_args, check_args)

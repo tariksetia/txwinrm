@@ -13,12 +13,12 @@ Current Feature Support
 -  WinRS
 -  typeperf
 -  Subscribe to the Windows Event Log
+-  Kerberos authentication (domain accounts)
 
 
 Future Feature Support
 ----------------------
 
--  Kerberos authentication (domain accounts)
 -  NTLM authentication (local accounts)
 -  HTTPS
 
@@ -58,11 +58,11 @@ Command Prompt as Administrator and execute the following commands
 WQL Queries
 -----------
 
-You can pass a single host and query via the command line...
+You can pass a single host a query via the command line...
 
 ::
 
-    $ winrm -r host -u user -p passwd -f "select * from Win32_NetworkAdapter"
+    $ winrm -r host -u user -f "select * from Win32_NetworkAdapter"
 
 
 Another option is to create an ini-style config file and hit multiple targets
@@ -135,6 +135,9 @@ redirect stdin to /dev/null if you want terse output.
           4.30% of CPU time used by WmiPrvSE#2 process with pid 1268
 
 
+The '-a' option specifies the authentication method. Currently supported values
+are 'basic' and 'kerberos'. 'basic' is the default.
+
 The '-d' option increases logging, printing out the XML for all requests and
 responses, along with the HTTP status code.
 
@@ -158,7 +161,7 @@ An example of single-shot
 
 ::
 
-    $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -sc 1' -r oakland -s
+    $ winrs single -u Administrator -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -sc 1' -r oakland
     {'exit_code': 0,
      'stderr': [],
      'stdout': ['"(PDH-CSV 4.0)","\\\\AMAZONA-SDFU7B1\\Memory\\Pages/sec","\\\\AMAZONA-SDFU7B1\\PhysicalDisk(_Total)\\Avg. Disk Queue Length","\\\\AMAZONA-SDFU7B1\\Processor(_Total)\\% Processor Time"',
@@ -171,7 +174,7 @@ An example of long-running
 
 ::
 
-    $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -si 1' -r oakland -l
+    $ winrs long -u Administrator -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -si 1' -r oakland
       "(PDH-CSV 4.0)","\\AMAZONA-SDFU7B1\Memory\Pages/sec","\\AMAZONA-SDFU7B1\PhysicalDisk(_Total)\Avg. Disk Queue Length","\\AMAZONA-SDFU7B1\Processor(_Total)\% Processor Time"
       "04/19/2013 21:43:10.603","0.000000","0.000000","18.462005"
       "04/19/2013 21:43:11.617","0.000000","0.000000","0.000464"
@@ -183,7 +186,7 @@ An example of interactive
 
 ::
 
-    $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -si 1' -r oakland -i
+    $ winrs interactive -u Administrator -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -si 1' -r oakland
     Microsoft Windows [Version 6.2.9200]
     (c) 2012 Microsoft Corporation. All rights reserved.
     C:\Users\Default>dir
@@ -211,7 +214,7 @@ An example of batch
 
 ::
 
-    $ winrs -u Administrator -p Z3n0ss -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -sc 1' -r oakland -b
+    $ winrs batch -u Administrator -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -sc 1' -r oakland
     Creating shell on oakland.
 
     Sending to oakland:
@@ -246,7 +249,7 @@ option and multiple counters. Here is an example:
 
 ::
 
-    $ typeperf -r gilroy -u Administrator -p Z3n0ss '\Processor(_Total)\% Processor Time' '\memory\Available Bytes' '\paging file(_Total)\% Usage'
+    $ typeperf -r gilroy -u Administrator '\Processor(_Total)\% Processor Time' '\memory\Available Bytes' '\paging file(_Total)\% Usage'
     \memory\Available Bytes
       00:54:27: 193130496.0
     \paging file(_Total)\% Usage

@@ -128,8 +128,18 @@ def print_summary(results, config, initial_wmiprvse_stats, good_hosts):
                               final_wmiprvse_stats)
 
 
+def _adapt_args_to_config(args):
+    config = app.Config()
+    config.hosts = \
+        {args.remote: (args.authentication, args.username, args.password)}
+    config.wqls = [args.filter]
+    return config
+
+
 @defer.inlineCallbacks
-def tx_main(config):
+def tx_main(args, config):
+    if config is None:
+        config = _adapt_args_to_config(args)
     do_summary = len(config.hosts) > 1
     if do_summary:
         initial_wmiprvse_stats, good_hosts = \
@@ -137,7 +147,7 @@ def tx_main(config):
     else:
         initial_wmiprvse_stats = None
         hostname, (auth_type, username, password) = config.hosts.items()[0]
-        good_hosts = [(hostname, username, password)]
+        good_hosts = [(hostname, auth_type, username, password)]
     if not good_hosts:
         app.exit_status = 1
         app.stop_reactor()
@@ -165,9 +175,13 @@ def add_args(parser):
     parser.add_argument("--filter", "-f")
 
 
-def check_args_func(args):
-    return bool(args.filter)
+def check_args(args):
+    legit = args.config or args.filter
+    if not legit:
+        print >>sys.stderr, "ERROR: You must specify a config file with " \
+                            "-c or specify a WQL filter with -f"
+    return legit
 
 
 if __name__ == '__main__':
-    app.main(tx_main, add_args, check_args_func)
+    app.main(tx_main, add_args, check_args)
