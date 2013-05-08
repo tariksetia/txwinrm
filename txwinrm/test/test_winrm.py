@@ -8,13 +8,37 @@
 ##############################################################################
 
 from twisted.trial import unittest
+from twisted.internet import defer
 from .. import winrm
+
+
+class Item(object):
+
+    def __init__(self, left, right):
+        self.left = left
+        self.right = right
+
+
+class Client(object):
+
+    def enumerate(self, wql):
+        return defer.succeed("foo")
 
 
 class TestApp(unittest.TestCase):
 
-    def test_winrm(self):
-        winrm
+    def test_get_vmpeak(self):
+        actual = winrm.get_vmpeak()
+        self.assertIsNotNone(actual)
+
+    def test_print_items(self):
+        winrm.print_items(
+            [Item(1, 2), Item('foo', 'bar')], 'myhost', 'my wql query', True)
+
+    @defer.inlineCallbacks
+    def test_get_remote_process_stats(self):
+        actual = yield winrm.get_remote_process_stats(Client())
+        self.assertEqual(actual, 'foo')
 
 if __name__ == '__main__':
     unittest.main()

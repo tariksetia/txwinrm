@@ -89,7 +89,7 @@ def batch_main(args):
             remote, args.authentication, args.username, args.password)
         print 'Creating shell on {0}.'.format(remote)
         yield shell.create()
-        for i in range(2):
+        for i in range(10):
             print '\nSending to {0}:\n  {1}'.format(remote, command)
             response = yield shell.run_command(command)
             print '\nReceived from {0}:'.format(remote)
@@ -116,19 +116,20 @@ def single_shot_main(args):
 
 
 def tx_main(args, config):
-    if args.kind[0] == "long":
+    if args.kind == "long":
         long_running_main(args)
-    elif args.kind[0] == "single":
+    elif args.kind == "single":
         single_shot_main(args)
-    elif args.kind[0] == "batch":
+    elif args.kind == "batch":
         batch_main(args)
     else:
         interactive_main(args)
 
 
 def add_args(parser):
-    parser.add_argument("kind", nargs=1, default="interactive",
-                        choices=["interactive", "single", "batch", "long"])
+    parser.add_argument(
+        "kind", nargs='?', default="interactive",
+        choices=["interactive", "single", "batch", "long"])
     parser.add_argument("--command", "-x")
 
 

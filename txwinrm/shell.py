@@ -192,7 +192,9 @@ class LongRunningCommand(object):
     @defer.inlineCallbacks
     def receive(self):
         receive_elem = yield self._sender.send_request(
-            'receive', shell_id=self._shell_id, command_id=self._command_id)
+            'receive',
+            shell_id=self._shell_id,
+            command_id=self._command_id)
         stdout_parts = _find_stream(receive_elem, self._command_id, 'stdout')
         stderr_parts = _find_stream(receive_elem, self._command_id, 'stderr')
         self._exit_code = _find_exit_code(receive_elem, self._command_id)

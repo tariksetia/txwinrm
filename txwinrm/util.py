@@ -30,9 +30,9 @@ except ImportError:
 log = logging.getLogger('zen.winrm')
 _XML_WHITESPACE_PATTERN = re.compile(r'>\s+<')
 _AGENT = None
-_MAX_PERSISTENT_PER_HOST = 2
-_CACHED_CONNECTION_TIMEOUT = 240
-_CONNECT_TIMEOUT = 5
+_MAX_PERSISTENT_PER_HOST = 200
+_CACHED_CONNECTION_TIMEOUT = 24000
+_CONNECT_TIMEOUT = 500
 _NANOSECONDS_PATTERN = re.compile(r'\.(\d{6})(\d{3})')
 _REQUEST_TEMPLATE_NAMES = (
     'enumerate', 'pull',
@@ -321,13 +321,15 @@ class RequestSender(object):
     def send_request(self, request_template_name, **kwargs):
         log.debug('sending request: {0} {1}'.format(
             request_template_name, kwargs))
-        if not self._url:
+        if not self._url or self._auth_type == 'kerberos':
             yield self._set_url_and_headers()
         request = _get_request_template(request_template_name).format(**kwargs)
-        log.debug(request)
+        # log.debug(request)
         body_producer = _StringProducer(request)
         response = yield _get_agent().request(
             'POST', self._url, self._headers, body_producer)
+        log.debug('received response {0} {1}'.format(
+            response.code, request_template_name))
         if response.code == httplib.UNAUTHORIZED:
             raise UnauthorizedError(
                 "unauthorized, check username and password.")
