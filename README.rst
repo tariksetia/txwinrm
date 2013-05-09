@@ -1,7 +1,22 @@
-txwinrm
-=======
+txwinrm: An Asynchronous Python WinRM client
+============================================
 
-Asynchronous Python WinRM client
+At Zenoss we are working on a project to improve the reliability, performance
+and features of native Windows monitoring. The core of this project is this
+Python library for asynchronously managing Windows using the WinRM and WinRS
+services. This library will then be used by Zenoss to do automatic discovery
+and monitoring the way Zenoss users are used to with some new possibilities.
+
+Right now we're trying to get as much real world experience using the library
+as possible to prove out the reliability and performance improvements we're
+hoping to achieve. If you have access to Windows servers, you can help! It
+doesn't even require a Zenoss Core installation as this tool stands alone right
+now.
+
+See the zenoss-windows forum for updates to the project, and leave your
+feedback there. 
+
+http://community.zenoss.org/community/forums/zenoss-windows
 
 
 Current Feature Support
@@ -19,8 +34,8 @@ Current Feature Support
 Future Feature Support
 ----------------------
 
--  NTLM authentication (local accounts)
 -  HTTPS
+-  NTLM authentication (local accounts)
 
 
 Installation
