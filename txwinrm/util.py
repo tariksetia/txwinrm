@@ -143,14 +143,24 @@ class KinitProcessProtocol(ProcessProtocol):
     def __init__(self, password):
         self._password = password
         self.d = defer.Deferred()
+        self._data = ''
 
     def outReceived(self, data):
         log.debug("kinit wrote to stdout: {0}".format(data))
-        if 'Password for' in data:
+        self._data += data
+        if 'Password for' in self._data and ':' in self._data:
+            log.debug("sending password")
             self.transport.write('{0}\n'.format(self._password))
 
     def errReceived(self, data):
         log.debug("kinit wrote to stdin: {0}".format(data))
+
+    def processExited(self, reason):
+        if reason.value.exitCode != 0:
+            log.debug("kinit failed (exit code {0}): {1} {2}".format(
+                reason.value.exitCode,
+                reason,
+                reason.value))
 
     def processEnded(self, reason):
         self.d.callback(None)
@@ -220,7 +230,10 @@ class AuthGSSClient(object):
                 result_code = self._step()
                 break
             except kerberos.GSSError as e:
-                log.debug('{0}. Calling kinit.'.format(e.args[1][0]))
+                msg = e.args[1][0]
+                if msg == 'Cannot determine realm for numeric host address':
+                    raise
+                log.debug('{0}. Calling kinit.'.format(msg))
                 yield kinit(self._username, self._password)
         if result_code != kerberos.AUTH_GSS_CONTINUE:
             raise Exception('kerberos authGSSClientStep failed ({0}).'
