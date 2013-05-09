@@ -17,7 +17,7 @@ LICENSE = join(BASEDIR, 'LICENSE')
 
 setup_kwargs = dict(
     name='txwinrm',
-    version='0.9.0',
+    version='0.9.1',
     description='Asynchronous Python WinRM client',
     long_description=LONG_DESCRIPTION,
     license=LICENSE,
