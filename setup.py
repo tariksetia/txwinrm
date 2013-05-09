@@ -9,18 +9,12 @@
 #
 ##############################################################################
 
-from os.path import dirname, abspath, join
-
-BASEDIR = dirname(abspath(__file__))
-LONG_DESCRIPTION = open(join(BASEDIR, 'README.rst')).read()
-LICENSE = join(BASEDIR, 'LICENSE')
-
 setup_kwargs = dict(
     name='txwinrm',
-    version='0.9.1',
+    version='0.9.2',
     description='Asynchronous Python WinRM client',
-    long_description=LONG_DESCRIPTION,
-    license=LICENSE,
+    long_description=open('README.rst').read(),
+    license='LICENSE',
     author='Zenoss',
     author_email='bedwards@zenoss.com',
     url='https://github.com/zenoss/txwinrm',

@@ -162,42 +162,17 @@ WinRS
 
 The winrs program has four modes of operation:
 
--  --single-shot or -s: Execute a single command and return its output
--  --long-running or -l: Execute a single long-running command like
-   'typeperf -si 1' and check the output periodically
--  --interactive or -i: Execute many commands in an interactive command
+-  interactive (default): Execute many commands in an interactive command
    prompt on the remote host
--  --batch or -b: Opens a command prompt on the remote system and
+-  single: Execute a single command and return its output
+-  long: Execute a single long-running command like
+   'typeperf -si 1' and check the output periodically
+-  batch: Opens a command prompt on the remote system and
    executes a list of commands (actually right now it executes one
    command twice as a proof-of-concept)
 
 
-An example of single-shot
-
-::
-
-    $ winrs single -u Administrator -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -sc 1' -r oakland
-    {'exit_code': 0,
-     'stderr': [],
-     'stdout': ['"(PDH-CSV 4.0)","\\\\AMAZONA-SDFU7B1\\Memory\\Pages/sec","\\\\AMAZONA-SDFU7B1\\PhysicalDisk(_Total)\\Avg. Disk Queue Length","\\\\AMAZONA-SDFU7B1\\Processor(_Total)\\% Processor Time"',
-                '"04/19/2013 21:43:48.823","0.000000","0.000000","0.005660"',
-                'Exiting, please wait...',
-                'The command completed successfully.']}
-
-
-An example of long-running
-
-::
-
-    $ winrs long -u Administrator -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -si 1' -r oakland
-      "(PDH-CSV 4.0)","\\AMAZONA-SDFU7B1\Memory\Pages/sec","\\AMAZONA-SDFU7B1\PhysicalDisk(_Total)\Avg. Disk Queue Length","\\AMAZONA-SDFU7B1\Processor(_Total)\% Processor Time"
-      "04/19/2013 21:43:10.603","0.000000","0.000000","18.462005"
-      "04/19/2013 21:43:11.617","0.000000","0.000000","0.000464"
-      "04/19/2013 21:43:12.631","0.000000","0.000000","1.538423"
-      "04/19/2013 21:43:13.645","0.000000","0.000000","0.000197"
-
-
-An example of interactive
+An example of interactive mode
 
 ::
 
@@ -223,6 +198,31 @@ An example of interactive
     11 Dir(s)   7,905,038,336 bytes free
 
     C:\Users\Default>exit
+
+
+An example of single mode
+
+::
+
+    $ winrs single -u Administrator -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -sc 1' -r oakland
+    {'exit_code': 0,
+     'stderr': [],
+     'stdout': ['"(PDH-CSV 4.0)","\\\\AMAZONA-SDFU7B1\\Memory\\Pages/sec","\\\\AMAZONA-SDFU7B1\\PhysicalDisk(_Total)\\Avg. Disk Queue Length","\\\\AMAZONA-SDFU7B1\\Processor(_Total)\\% Processor Time"',
+                '"04/19/2013 21:43:48.823","0.000000","0.000000","0.005660"',
+                'Exiting, please wait...',
+                'The command completed successfully.']}
+
+
+An example of long mode
+
+::
+
+    $ winrs long -u Administrator -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -si 1' -r oakland
+      "(PDH-CSV 4.0)","\\AMAZONA-SDFU7B1\Memory\Pages/sec","\\AMAZONA-SDFU7B1\PhysicalDisk(_Total)\Avg. Disk Queue Length","\\AMAZONA-SDFU7B1\Processor(_Total)\% Processor Time"
+      "04/19/2013 21:43:10.603","0.000000","0.000000","18.462005"
+      "04/19/2013 21:43:11.617","0.000000","0.000000","0.000464"
+      "04/19/2013 21:43:12.631","0.000000","0.000000","1.538423"
+      "04/19/2013 21:43:13.645","0.000000","0.000000","0.000197"
 
 
 An example of batch
