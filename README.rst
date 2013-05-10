@@ -1,5 +1,5 @@
-txwinrm: An Asynchronous Python WinRM client
-============================================
+txwinrm: Async Python WinRM Client
+==================================
 
 At Zenoss we are working on a project to improve the reliability, performance
 and features of native Windows monitoring. The core of this project is this
