@@ -19,6 +19,40 @@ feedback there.
 http://community.zenoss.org/community/forums/zenoss-windows
 
 
+Installation
+------------
+
+Ubuntu Server 12.04.1 LTS (Python 2.7.3)
+
+::
+
+    sudo apt-get update
+
+    sudo apt-get -y install gcc python-dev libkrb5-dev krb5-user python-setuptools
+    # if prompted for your kerberos realm, leave it blank and choose OK
+
+    sudo easy_install txwinrm
+
+    # if you want to use a Windows domain
+    sudo genkrb5conf <windows domain> <domain controller IP address>
+
+    # now you can run the txwinrm commands (winrm, winrs, typeperf, and wecutil)
+ 
+ 
+Centos 6.3 x86_64 (Python 2.6.6)
+
+::
+ 
+    # as root
+    yum -y install gcc python-devel krb5-devel krb5-workstation python-setuptools
+    easy_install txwinrm
+     
+    # if you want to use a Windows domain
+    genkrb5conf <windows domain> <domain controller IP address>
+     
+    # now you can run the txwinrm commands (winrm, winrs, typeperf, and wecutil) as a normal user
+
+
 Current Feature Support
 -----------------------
 
@@ -36,24 +70,6 @@ Future Feature Support
 
 -  HTTPS
 -  NTLM authentication (local accounts)
-
-
-Installation
-------------
-
-Install this application into your Python site libraries with:
-
-::
-
-    $ python setup.py install
-
-
-Dependencies
-------------
-
--  Python 2.7
--  Twisted 11.0 or later (utilizes HTTP connection pools with Twisted
-   12.1 or later)
 
 
 Configuring the Target Windows Machines
