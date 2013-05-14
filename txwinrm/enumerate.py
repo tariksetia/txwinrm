@@ -33,7 +33,7 @@ from pprint import pformat
 from xml import sax
 from twisted.internet import defer
 from twisted.internet.protocol import Protocol
-from twisted.web._newclient import ResponseFailed
+from twisted.web.client import ResponseFailed
 from . import constants as c
 from .util import RequestSender, get_datetime
 
@@ -81,17 +81,22 @@ class WinrmClient(object):
                 request_template_name = 'pull'
             else:
                 raise Exception("Reached max requests per enumeration.")
-        except Exception, e:
+        except ResponseFailed as e:
+            for reason in e.reasons:
+                log.error('{0} {1}'.format(self._hostname, reason.value))
+            raise
+        except Exception as e:
             log.error('{0} {1}'.format(self._hostname, e))
             raise
         defer.returnValue(items)
 
 
-def create_winrm_client(hostname, auth_type, username, password):
+def create_winrm_client(hostname, auth_type, username, password, scheme, port):
     """
     Constructs a WinRM client with the default response handler.
     """
-    sender = RequestSender(hostname, auth_type, username, password)
+    sender = RequestSender(
+        hostname, auth_type, username, password, scheme, port)
     return WinrmClient(sender, SaxResponseHandler())
 
 

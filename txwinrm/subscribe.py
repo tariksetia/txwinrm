@@ -10,7 +10,7 @@
 from collections import namedtuple
 from twisted.internet import defer
 from . import constants as c
-from .util import EtreeRequestSender, get_datetime
+from .util import create_etree_request_sender, get_datetime
 
 _MAX_PULL_REQUESTS_PER_BATCH = 999999
 
@@ -175,6 +175,8 @@ class EventSubscription(object):
         defer.returnValue(resp_elem)
 
 
-def create_event_subscription(hostname, auth_type, username, password):
-    sender = EtreeRequestSender(hostname, auth_type, username, password)
+def create_event_subscription(
+        hostname, auth_type, username, password, scheme, port):
+    sender = create_etree_request_sender(
+        hostname, auth_type, username, password, scheme, port)
     return EventSubscription(sender)

@@ -58,7 +58,8 @@ class WinrsCmd(cmd.Cmd):
 def long_running_main(args):
     try:
         client = create_long_running_command(
-            args.remote, args.authentication, args.username, args.password)
+            args.remote, args.authentication, args.username, args.password,
+            args.scheme, args.port)
         yield client.start(args.command)
         for i in xrange(5):
             stdout, stderr = yield task.deferLater(
@@ -73,7 +74,8 @@ def long_running_main(args):
 def interactive_main(args):
     remote = args.remote
     shell = create_remote_shell(
-        remote, args.authentication, args.username, args.password)
+        remote, args.authentication, args.username, args.password, args.scheme,
+        args.port)
     response = yield shell.create()
     intro = '\n'.join(response.stdout)
     winrs_cmd = WinrsCmd(shell)
@@ -86,7 +88,8 @@ def batch_main(args):
     command = args.command
     try:
         shell = create_remote_shell(
-            remote, args.authentication, args.username, args.password)
+            remote, args.authentication, args.username, args.password,
+            args.scheme, args.port)
         print 'Creating shell on {0}.'.format(remote)
         yield shell.create()
         for i in range(10):
@@ -108,40 +111,43 @@ def batch_main(args):
 def single_shot_main(args):
     try:
         client = create_single_shot_command(
-            args.remote, args.authentication, args.username, args.password)
+            args.remote, args.authentication, args.username, args.password,
+            args.scheme, args.port)
         results = yield client.run_command(args.command)
         pprint(results)
     finally:
         reactor.stop()
 
 
-def tx_main(args, config):
-    if args.kind == "long":
-        long_running_main(args)
-    elif args.kind == "single":
-        single_shot_main(args)
-    elif args.kind == "batch":
-        batch_main(args)
-    else:
-        interactive_main(args)
+class WinrsUtility(app.BaseUtility):
 
+    def tx_main(self, args, config):
+        if args.kind == "long":
+            long_running_main(args)
+        elif args.kind == "single":
+            single_shot_main(args)
+        elif args.kind == "batch":
+            batch_main(args)
+        else:
+            interactive_main(args)
 
-def add_args(parser):
-    parser.add_argument(
-        "kind", nargs='?', default="interactive",
-        choices=["interactive", "single", "batch", "long"])
-    parser.add_argument("--command", "-x")
+    def add_args(self, parser):
+        parser.add_argument(
+            "kind", nargs='?', default="interactive",
+            choices=["interactive", "single", "batch", "long"])
+        parser.add_argument("--command", "-x")
 
-
-def check_args(args):
-    if not args.command and args.kind in ["single", "batch", "long"]:
-        print >>sys.stderr, "ERROR: {0} requires that you specify a command."
-        return False
-    elif args.config:
-        print >>sys.stderr, "ERROR: The winrs command does not support " \
-                            "a configuration file at this time."
-        return False
-    return True
+    def check_args(self, args):
+        if not args.command and args.kind in ["single", "batch", "long"]:
+            print >>sys.stderr, \
+                "ERROR: {0} requires that you specify a command."
+            return False
+        elif args.config:
+            print >>sys.stderr, \
+                "ERROR: The winrs command does not support a configuration " \
+                "file at this time."
+            return False
+        return True
 
 if __name__ == '__main__':
-    app.main(tx_main, add_args, check_args)
+    app.main(WinrsUtility())

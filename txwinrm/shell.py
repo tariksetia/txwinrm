@@ -18,7 +18,7 @@ from cStringIO import StringIO
 from twisted.internet import reactor, defer, task
 from xml.etree import cElementTree as ET
 from . import constants as c
-from .util import EtreeRequestSender, get_datetime
+from .util import create_etree_request_sender, get_datetime
 
 log = logging.getLogger('zen.winrm')
 _MAX_REQUESTS_PER_COMMAND = 9999
@@ -162,8 +162,10 @@ class SingleShotCommand(object):
         yield self._sender.send_request('delete', shell_id=shell_id)
 
 
-def create_single_shot_command(hostname, auth_type, username, password):
-    sender = EtreeRequestSender(hostname, auth_type, username, password)
+def create_single_shot_command(
+        hostname, auth_type, username, password, scheme, port):
+    sender = create_etree_request_sender(
+        hostname, auth_type, username, password, scheme, port)
     return SingleShotCommand(sender)
 
 
@@ -219,8 +221,10 @@ class LongRunningCommand(object):
         defer.returnValue(CommandResponse(stdout, stderr, self._exit_code))
 
 
-def create_long_running_command(hostname, auth_type, username, password):
-    sender = EtreeRequestSender(hostname, auth_type, username, password)
+def create_long_running_command(
+        hostname, auth_type, username, password, scheme, port):
+    sender = create_etree_request_sender(
+        hostname, auth_type, username, password, scheme, port)
     return LongRunningCommand(sender)
 
 
@@ -269,9 +273,9 @@ class Typeperf(object):
         self._row_count = 0
 
 
-def create_typeperf(hostname, auth_type, username, password):
+def create_typeperf(hostname, auth_type, username, password, scheme, port):
     long_running_command = create_long_running_command(
-        hostname, auth_type, username, password)
+        hostname, auth_type, username, password, scheme, port)
     return Typeperf(long_running_command)
 
 
@@ -402,7 +406,8 @@ class RemoteShell(object):
         defer.returnValue((stdout, stderr))
 
 
-def create_remote_shell(
-        hostname, auth_type, username, password, include_exit_codes=False):
-    sender = EtreeRequestSender(hostname, auth_type, username, password)
+def create_remote_shell(hostname, auth_type, username, password, scheme, port,
+                        include_exit_codes=False):
+    sender = create_etree_request_sender(
+        hostname, auth_type, username, password, scheme, port)
     return RemoteShell(sender, include_exit_codes)

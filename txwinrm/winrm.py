@@ -98,13 +98,15 @@ def print_remote_cpu_util(cpu_util_info):
 def get_initial_wmiprvse_stats(config):
     initial_wmiprvse_stats = {}
     good_hosts = []
-    for hostname, (auth_type, username, password) in config.hosts.iteritems():
+    for hostname, (auth_type, username, password, scheme, port) \
+            in config.hosts.iteritems():
         try:
             client = create_winrm_client(
-                hostname, auth_type, username, password)
+                hostname, auth_type, username, password, scheme, port)
             initial_wmiprvse_stats[hostname] = \
                 yield get_remote_process_stats(client)
-            good_hosts.append((hostname, auth_type, username, password))
+            good_hosts.append((
+                hostname, auth_type, username, password, scheme, port))
         except UnauthorizedError:
             continue
         except TimeoutError:
@@ -116,8 +118,9 @@ def get_initial_wmiprvse_stats(config):
 def print_summary(results, config, initial_wmiprvse_stats, good_hosts):
     global exit_status
     final_wmiprvse_stats = {}
-    for hostname, auth_type, username, password in good_hosts:
-        client = create_winrm_client(hostname, auth_type, username, password)
+    for hostname, auth_type, username, password, scheme, port in good_hosts:
+        client = create_winrm_client(
+            hostname, auth_type, username, password, scheme, port)
         final_wmiprvse_stats[hostname] = \
             yield get_remote_process_stats(client)
     print >>sys.stderr, '\nSummary:'
@@ -139,60 +142,59 @@ def print_summary(results, config, initial_wmiprvse_stats, good_hosts):
     print_remote_cpu_util(cpu_util_info)
 
 
-def _adapt_args_to_config(args):
-    config = app.Config()
-    config.hosts = \
-        {args.remote: (args.authentication, args.username, args.password)}
-    config.wqls = [args.filter]
-    return config
-
-
-@defer.inlineCallbacks
-def tx_main(args, config):
-    if config is None:
-        config = _adapt_args_to_config(args)
-    do_summary = len(config.hosts) > 1
-    if do_summary:
-        initial_wmiprvse_stats, good_hosts = \
-            yield get_initial_wmiprvse_stats(config)
-    else:
-        initial_wmiprvse_stats = None
-        hostname, (auth_type, username, password) = config.hosts.items()[0]
-        good_hosts = [(hostname, auth_type, username, password)]
-    if not good_hosts:
-        app.exit_status = 1
-        app.stop_reactor()
-        return
-    ds = []
-    for hostname, auth_type, username, password in good_hosts:
-        client = create_winrm_client(hostname, auth_type, username, password)
-        for wql in config.wqls:
-            d = client.enumerate(wql)
-            d.addCallback(print_items, hostname, wql, do_summary)
-            ds.append(d)
-    dl = defer.DeferredList(ds, consumeErrors=True)
+class WinrmUtility(app.BaseUtility):
 
     @defer.inlineCallbacks
-    def dl_callback(results):
+    def tx_main(self, args, config):
+        do_summary = len(config.hosts) > 1
         if do_summary:
-            yield print_summary(
-                results, config, initial_wmiprvse_stats, good_hosts)
+            initial_wmiprvse_stats, good_hosts = \
+                yield get_initial_wmiprvse_stats(config)
+        else:
+            initial_wmiprvse_stats = None
+            hostname, (auth_type, username, password, scheme, port) = \
+                config.hosts.items()[0]
+            good_hosts = [(
+                hostname, auth_type, username, password, scheme, port)]
+        if not good_hosts:
+            app.exit_status = 1
+            app.stop_reactor()
+            return
+        ds = []
+        for hostname, auth_type, username, password, scheme, port \
+                in good_hosts:
+            client = create_winrm_client(
+                hostname, auth_type, username, password, scheme, port)
+            for wql in config.wqls:
+                d = client.enumerate(wql)
+                d.addCallback(print_items, hostname, wql, do_summary)
+                ds.append(d)
+        dl = defer.DeferredList(ds, consumeErrors=True)
 
-    dl.addCallback(dl_callback)
-    dl.addBoth(app.stop_reactor)
+        @defer.inlineCallbacks
+        def dl_callback(results):
+            if do_summary:
+                yield print_summary(
+                    results, config, initial_wmiprvse_stats, good_hosts)
 
+        dl.addCallback(dl_callback)
+        dl.addBoth(app.stop_reactor)
 
-def add_args(parser):
-    parser.add_argument("--filter", "-f")
+    def add_args(self, parser):
+        parser.add_argument("--filter", "-f")
 
+    def check_args(self, args):
+        legit = args.config or args.filter
+        if not legit:
+            print >>sys.stderr, "ERROR: You must specify a config file with " \
+                                "-c or specify a WQL filter with -f"
+        return legit
 
-def check_args(args):
-    legit = args.config or args.filter
-    if not legit:
-        print >>sys.stderr, "ERROR: You must specify a config file with " \
-                            "-c or specify a WQL filter with -f"
-    return legit
+    def add_config(self, parser, config):
+        config.wqls = parser.options('wqls')
 
+    def adapt_args_to_config(self, args, config):
+        config.wqls = [args.filter]
 
 if __name__ == '__main__':
-    app.main(tx_main, add_args, check_args)
+    app.main(WinrmUtility())

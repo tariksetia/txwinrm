@@ -17,6 +17,7 @@ from xml.etree import cElementTree as ET
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol, ProcessProtocol
 from twisted.web.client import Agent
+from twisted.internet.ssl import CertificateOptions
 from twisted.web.http_headers import Headers
 from . import constants as c
 
@@ -45,23 +46,34 @@ _CONTENT_TYPE = {'Content-Type': ['application/soap+xml;charset=UTF-8']}
 _MAX_KERBEROS_RETRIES = 3
 
 
+class MyWebClientContextFactory(object):
+
+    def __init__(self):
+        self._options = CertificateOptions()
+
+    def getContext(self, hostname, port):
+        return self._options.getContext()
+
+
 def _get_agent():
     global _AGENT
     if _AGENT is None:
+        context_factory = MyWebClientContextFactory()
         try:
             # HTTPConnectionPool has been present since Twisted version 12.1
             from twisted.web.client import HTTPConnectionPool
             pool = HTTPConnectionPool(reactor, persistent=True)
             pool.maxPersistentPerHost = _MAX_PERSISTENT_PER_HOST
             pool.cachedConnectionTimeout = _CACHED_CONNECTION_TIMEOUT
-            _AGENT = Agent(
-                reactor, connectTimeout=_CONNECT_TIMEOUT, pool=pool)
+            _AGENT = Agent(reactor, context_factory,
+                           connectTimeout=_CONNECT_TIMEOUT, pool=pool)
         except ImportError:
             try:
                 # connectTimeout first showed up in Twisted version 11.1
-                _AGENT = Agent(reactor, connectTimeout=_CONNECT_TIMEOUT)
+                _AGENT = Agent(
+                    reactor, context_factory, connectTimeout=_CONNECT_TIMEOUT)
             except TypeError:
-                _AGENT = Agent(reactor)
+                _AGENT = Agent(reactor, context_factory)
     return _AGENT
 
 
@@ -295,8 +307,8 @@ def _authenticate_with_kerberos(hostname, username, password, scheme, url):
 
 
 @defer.inlineCallbacks
-def _get_url_and_headers(hostname, auth_type, username, password,
-                         scheme='http', port=5985):
+def _get_url_and_headers(hostname, auth_type, username, password, scheme,
+                         port):
     url = "{scheme}://{hostname}:{port}/wsman".format(
         scheme=scheme, hostname=hostname, port=port)
     headers = Headers(_CONTENT_TYPE)
@@ -313,18 +325,21 @@ def _get_url_and_headers(hostname, auth_type, username, password,
 
 class RequestSender(object):
 
-    def __init__(self, hostname, auth_type, username, password):
+    def __init__(self, hostname, auth_type, username, password, scheme, port):
         self._hostname = hostname
         self._auth_type = auth_type
         self._username = username
         self._password = password
+        self._scheme = scheme
+        self._port = port
         self._url = None
         self._headers = None
 
     @defer.inlineCallbacks
     def _set_url_and_headers(self):
         self._url, self._headers = yield _get_url_and_headers(
-            self._hostname, self._auth_type, self._username, self._password)
+            self._hostname, self._auth_type, self._username, self._password,
+            self._scheme, self._port)
 
     @property
     def hostname(self):
@@ -371,8 +386,8 @@ class _StringProtocol(Protocol):
 class EtreeRequestSender(object):
     """A request sender that returns an etree element"""
 
-    def __init__(self, hostname, username, password, auth_type):
-        self._sender = RequestSender(hostname, username, password, auth_type)
+    def __init__(self, sender):
+        self._sender = sender
 
     @defer.inlineCallbacks
     def send_request(self, request_template_name, **kwargs):
@@ -382,6 +397,13 @@ class EtreeRequestSender(object):
         resp.deliverBody(proto)
         xml_str = yield proto.d
         defer.returnValue(ET.fromstring(xml_str))
+
+
+def create_etree_request_sender(hostname, auth_type, username, password,
+                                scheme, port):
+    sender = RequestSender(
+        hostname, auth_type, username, password, scheme, port)
+    return EtreeRequestSender(sender)
 
 
 def get_datetime(text):
