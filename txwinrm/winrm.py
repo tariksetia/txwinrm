@@ -145,7 +145,7 @@ def print_summary(results, config, initial_wmiprvse_stats, good_hosts):
 class WinrmUtility(app.BaseUtility):
 
     @defer.inlineCallbacks
-    def tx_main(self, args, config):
+    def tx_main(self, unused_args, config):
         do_summary = len(config.hosts) > 1
         if do_summary:
             initial_wmiprvse_stats, good_hosts = \

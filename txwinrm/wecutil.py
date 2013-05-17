@@ -17,8 +17,32 @@ from .subscribe import create_event_subscription
 log = logging.getLogger('zen.winrm')
 
 
+class SubscriptionInfo(object):
+
+    def __init__(self, path=None, select=None):
+        self.path = 
+        self.select = None
+
+
 def pprint_event(event):
     pprint(event)
+
+
+@defer.inlineCallbacks
+def do_subscription(conn_info, subscr_info, num_pulls):
+    subscription = create_event_subscription(conn_info)
+    yield subscription.subscribe(
+        path=subscr_info.path, select=subscr_info.select)
+    i = 0
+    while num_pulls == 0 or i < num_pulls:
+        i += 1
+        sys.stdout.write('Pull #{0}'.format(i))
+        if num_pulls > 0:
+            sys.stdout.write(' of {0}'.format(num_pulls))
+        print
+        yield task.deferLater(
+            reactor, 1, subscription.pull, pprint_event)
+    yield subscription.unsubscribe()
 
 
 class WecUtility(app.BaseUtility):
@@ -26,20 +50,14 @@ class WecUtility(app.BaseUtility):
     @defer.inlineCallbacks
     def tx_main(self, args, config):
         try:
-            subscription = create_event_subscription(
-                args.remote, args.authentication, args.username, args.password,
-                args.scheme, args.port)
-            yield subscription.subscribe(path=args.path, select=args.select)
-            i = 0
-            while args.num_pulls == 0 or i < args.num_pulls:
-                i += 1
-                sys.stdout.write('Pull #{0}'.format(i))
-                if args.num_pulls > 0:
-                    sys.stdout.write(' of {0}'.format(args.num_pulls))
-                print
-                yield task.deferLater(
-                    reactor, 1, subscription.pull, pprint_event)
-            yield subscription.unsubscribe()
+            for conn_info in config.conn_infos:
+                for subscr_info in config.subscr_infos:
+                    try:
+                        do_subscription(conn_info, subscr_info)
+                    except Exception as e:
+                        log.error('Could not subscribe. {0} {1}'.format(
+                            conn_info.hostname, e))
+                        continue
         finally:
             if reactor.running:
                 reactor.stop()
@@ -50,11 +68,22 @@ class WecUtility(app.BaseUtility):
         parser.add_argument("--num-pulls", "-n", type=int, default=0)
 
     def check_args(self, args):
-        if args.config:
-            print >>sys.stderr, \
-                "ERROR: The wecutil command does not support a " \
-                "configuration file at this time."
-        return not args.config
+        return True
+
+    def add_config(self, parser, config):
+        dct = {}
+        for key, value in parser.items('subscriptions'):
+            k1, k2 = key.split('.')
+            if k2 not in ['path', 'select']:
+                log.error("Illegal subscription key: {0}".format(key))
+                continue
+            if k1 not in dct:
+                dct[k1] = SubscriptionInfo()
+            setattr(dct[k1], k2)
+        config.subscr_infos = dct.values()
+
+    def adapt_args_to_config(self, args, config):
+        config.subcr_infos = [SubscriptionInfo]
 
 if __name__ == '__main__':
     app.main(WecUtility())

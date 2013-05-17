@@ -162,10 +162,8 @@ class SingleShotCommand(object):
         yield self._sender.send_request('delete', shell_id=shell_id)
 
 
-def create_single_shot_command(
-        hostname, auth_type, username, password, scheme, port):
-    sender = create_etree_request_sender(
-        hostname, auth_type, username, password, scheme, port)
+def create_single_shot_command(conn_info):
+    sender = create_etree_request_sender(conn_info)
     return SingleShotCommand(sender)
 
 
@@ -221,10 +219,8 @@ class LongRunningCommand(object):
         defer.returnValue(CommandResponse(stdout, stderr, self._exit_code))
 
 
-def create_long_running_command(
-        hostname, auth_type, username, password, scheme, port):
-    sender = create_etree_request_sender(
-        hostname, auth_type, username, password, scheme, port)
+def create_long_running_command(conn_info):
+    sender = create_etree_request_sender(conn_info)
     return LongRunningCommand(sender)
 
 
@@ -273,9 +269,8 @@ class Typeperf(object):
         self._row_count = 0
 
 
-def create_typeperf(hostname, auth_type, username, password, scheme, port):
-    long_running_command = create_long_running_command(
-        hostname, auth_type, username, password, scheme, port)
+def create_typeperf(conn_info):
+    long_running_command = create_long_running_command(conn_info)
     return Typeperf(long_running_command)
 
 
@@ -406,8 +401,6 @@ class RemoteShell(object):
         defer.returnValue((stdout, stderr))
 
 
-def create_remote_shell(hostname, auth_type, username, password, scheme, port,
-                        include_exit_codes=False):
-    sender = create_etree_request_sender(
-        hostname, auth_type, username, password, scheme, port)
+def create_remote_shell(conn_info, include_exit_codes=False):
+    sender = create_etree_request_sender(conn_info)
     return RemoteShell(sender, include_exit_codes)

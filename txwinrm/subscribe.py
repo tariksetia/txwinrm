@@ -175,8 +175,6 @@ class EventSubscription(object):
         defer.returnValue(resp_elem)
 
 
-def create_event_subscription(
-        hostname, auth_type, username, password, scheme, port):
-    sender = create_etree_request_sender(
-        hostname, auth_type, username, password, scheme, port)
+def create_event_subscription(conn_info):
+    sender = create_etree_request_sender(conn_info)
     return EventSubscription(sender)

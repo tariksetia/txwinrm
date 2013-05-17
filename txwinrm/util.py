@@ -145,8 +145,8 @@ def _get_request_template(name):
     return _REQUEST_TEMPLATES[name]
 
 
-def _get_basic_auth_header(username, password):
-    authstr = "{0}:{1}".format(username, password)
+def _get_basic_auth_header(conn_info):
+    authstr = "{0}:{1}".format(conn_info.username, conn_info.password)
     return 'Basic {0}'.format(base64.encodestring(authstr).strip())
 
 
@@ -163,6 +163,7 @@ class KinitProcessProtocol(ProcessProtocol):
         if 'Password for' in self._data and ':' in self._data:
             log.debug("sending password")
             self.transport.write('{0}\n'.format(self._password))
+            self._data = ''
 
     def errReceived(self, data):
         log.debug("kinit wrote to stdin: {0}".format(data))
@@ -270,11 +271,11 @@ class AuthGSSClient(object):
 
 
 @defer.inlineCallbacks
-def _authenticate_with_kerberos(hostname, username, password, scheme, url):
+def _authenticate_with_kerberos(conn_info, url):
     if not KERBEROS_INSTALLED:
         raise Exception('You must run "easy_install kerberos".')
-    service = '{0}@{1}'.format(scheme.upper(), hostname)
-    gss_client = AuthGSSClient(service, username, password)
+    service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
+    gss_client = AuthGSSClient(service, conn_info.username, conn_info.password)
     base64_client_data = yield gss_client.get_base64_client_data()
     auth = 'Kerberos {0}'.format(base64_client_data)
     k_headers = Headers(_CONTENT_TYPE)
@@ -303,53 +304,43 @@ def _authenticate_with_kerberos(hostname, username, password, scheme, url):
             .format(auth_header))
     k_username = gss_client.get_username(auth_details)
     log.debug('kerberos auth successful for user: {0} / {1} '
-              .format(username, k_username))
+              .format(conn_info.username, k_username))
 
 
 @defer.inlineCallbacks
-def _get_url_and_headers(hostname, auth_type, username, password, scheme,
-                         port):
-    url = "{scheme}://{hostname}:{port}/wsman".format(
-        scheme=scheme, hostname=hostname, port=port)
+def _get_url_and_headers(conn_info):
+    url = "{c.scheme}://{c.hostname}:{c.port}/wsman".format(c=conn_info)
     headers = Headers(_CONTENT_TYPE)
-    if auth_type == 'basic':
-        headers.addRawHeader('Authorization',
-                             _get_basic_auth_header(username, password))
-    elif auth_type == 'kerberos':
-        yield _authenticate_with_kerberos(
-            hostname, username, password, scheme, url)
+    if conn_info.auth_type == 'basic':
+        headers.addRawHeader(
+            'Authorization', _get_basic_auth_header(conn_info))
+    elif conn_info.auth_type == 'kerberos':
+        yield _authenticate_with_kerberos(conn_info, url)
     else:
-        raise Exception('unknown auth type: {0}'.format(auth_type))
+        raise Exception('unknown auth type: {0}'.format(conn_info.auth_type))
     defer.returnValue((url, headers))
 
 
 class RequestSender(object):
 
-    def __init__(self, hostname, auth_type, username, password, scheme, port):
-        self._hostname = hostname
-        self._auth_type = auth_type
-        self._username = username
-        self._password = password
-        self._scheme = scheme
-        self._port = port
+    def __init__(self, conn_info):
+        self._conn_info = conn_info
         self._url = None
         self._headers = None
 
     @defer.inlineCallbacks
     def _set_url_and_headers(self):
-        self._url, self._headers = yield _get_url_and_headers(
-            self._hostname, self._auth_type, self._username, self._password,
-            self._scheme, self._port)
+        self._url, self._headers = yield _get_url_and_headers(self._conn_info)
 
     @property
     def hostname(self):
-        return self._hostname
+        return self._conn_info.hostname
 
     @defer.inlineCallbacks
     def send_request(self, request_template_name, **kwargs):
         log.debug('sending request: {0} {1}'.format(
             request_template_name, kwargs))
-        if not self._url or self._auth_type == 'kerberos':
+        if not self._url or self._conn_info.auth_type == 'kerberos':
             yield self._set_url_and_headers()
         request = _get_request_template(request_template_name).format(**kwargs)
         # log.debug(request)
@@ -399,10 +390,8 @@ class EtreeRequestSender(object):
         defer.returnValue(ET.fromstring(xml_str))
 
 
-def create_etree_request_sender(hostname, auth_type, username, password,
-                                scheme, port):
-    sender = RequestSender(
-        hostname, auth_type, username, password, scheme, port)
+def create_etree_request_sender(conn_info):
+    sender = RequestSender(conn_info)
     return EtreeRequestSender(sender)
 
 
