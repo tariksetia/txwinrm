@@ -17,62 +17,48 @@ from . import app
 from .enumerate import create_winrm_client
 
 
-GLOBAL_ELEMENT_COUNT = 0
+class WinrmStrategy(object):
 
+    def __init__(self):
+        self._item_count = 0
 
-def print_items(items, hostname, wql, include_header):
-    global GLOBAL_ELEMENT_COUNT
-    if include_header:
-        print '\n', hostname, "==>", wql
-        indent = '  '
-    else:
-        indent = ''
-    is_first_item = True
-    for item in items:
-        if is_first_item:
-            is_first_item = False
+    @property
+    def count_summary(self):
+        return '{0} items'.format(self._item_count)
+
+    def _print_items(self, items, hostname, wql, include_header):
+        if include_header:
+            print '\n', hostname, "==>", wql
+            indent = '  '
         else:
-            print '{0}{1}'.format(indent, '-' * 4)
-        for name, value in vars(item).iteritems():
-            GLOBAL_ELEMENT_COUNT += 1
-            text = value
-            if isinstance(value, list):
-                text = ', '.join(value)
-            print '{0}{1} = {2}'.format(indent, name, text)
+            indent = ''
+        is_first_item = True
+        for item in items:
+            if is_first_item:
+                is_first_item = False
+            else:
+                print '{0}{1}'.format(indent, '-' * 4)
+            for name, value in vars(item).iteritems():
+                self._item_count += 1
+                text = value
+                if isinstance(value, list):
+                    text = ', '.join(value)
+                print '{0}{1} = {2}'.format(indent, name, text)
 
-
-class WinrmUtility(object):
-
-    @defer.inlineCallbacks
-    def tx_main(self, unused_args, config):
-        do_summary = len(config.conn_infos) > 1
-        if do_summary:
-            initial_wmiprvse_stats, good_conn_infos = \
-                yield get_initial_wmiprvse_stats(config)
-        else:
-            initial_wmiprvse_stats = None
-            good_conn_infos = [config.conn_infos[0]]
-        if not good_conn_infos:
-            app.exit_status = 1
-            app.stop_reactor()
-            return
+    def act(self, good_conn_infos, config):
+        include_header = len(config.conn_infos) > 1
         ds = []
         for conn_info in good_conn_infos:
             client = create_winrm_client(conn_info)
             for wql in config.wqls:
                 d = client.enumerate(wql)
-                d.addCallback(print_items, conn_info.hostname, wql, do_summary)
+                d.addCallback(
+                    self._print_items, conn_info.hostname, wql, include_header)
                 ds.append(d)
-        dl = defer.DeferredList(ds, consumeErrors=True)
+        return defer.DeferredList(ds, consumeErrors=True)
 
-        @defer.inlineCallbacks
-        def dl_callback(results):
-            if do_summary:
-                yield print_summary(
-                    results, config, initial_wmiprvse_stats, good_conn_infos)
 
-        dl.addCallback(dl_callback)
-        dl.addBoth(app.stop_reactor)
+class WinrmUtility(app.ConfigDrivenUtility):
 
     def add_args(self, parser):
         parser.add_argument("--filter", "-f")
@@ -91,4 +77,4 @@ class WinrmUtility(object):
         config.wqls = [args.filter]
 
 if __name__ == '__main__':
-    app.main(WinrmUtility())
+    app.main(WinrmUtility(WinrmStrategy()))

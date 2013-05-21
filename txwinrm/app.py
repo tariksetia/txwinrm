@@ -83,7 +83,7 @@ def get_initial_wmiprvse_stats(config):
     good_conn_infos = []
     for conn_info in config.conn_infos:
         try:
-            client =  create_winrm_client(conn_info)
+            client = create_winrm_client(conn_info)
             initial_wmiprvse_stats[conn_info.hostname] = \
                 yield get_remote_process_stats(client)
             good_conn_infos.append(conn_info)
@@ -94,34 +94,10 @@ def get_initial_wmiprvse_stats(config):
     defer.returnValue((initial_wmiprvse_stats, good_conn_infos))
 
 
-@defer.inlineCallbacks
-def print_summary(results, config, initial_wmiprvse_stats, good_conn_infos):
-    global exit_status
-    final_wmiprvse_stats = {}
-    for conn_info in good_conn_infos:
-        client =  create_winrm_client(conn_info)
-        final_wmiprvse_stats[conn_info.hostname] = \
-            yield get_remote_process_stats(client)
-    print >>sys.stderr, '\nSummary:'
-    print >>sys.stderr, '  Connected to', len(good_conn_infos), 'of', \
-                        len(config.conn_infos), 'hosts'
-    print >>sys.stderr, "  Processed", GLOBAL_ELEMENT_COUNT, "elements"
-    failure_count = 0
-    for success, result in results:
-        if not success:
-            failure_count += 1
-    if failure_count:
-        exit_status = 1
-    print >>sys.stderr, '  Failed to process', failure_count,\
-        "responses"
-    print >>sys.stderr, "  Peak virtual memory useage:", get_vmpeak()
-    print >>sys.stderr, '  Remote CPU utilization:'
-    cpu_util_info = calculate_remote_cpu_util(
-        initial_wmiprvse_stats, final_wmiprvse_stats)
-    print_remote_cpu_util(cpu_util_info)
-
-
 class ConfigDrivenUtility(object):
+
+    def __init__(self, strategy):
+        self._strategy = strategy
 
     @defer.inlineCallbacks
     def tx_main(self, args, config):
@@ -141,12 +117,39 @@ class ConfigDrivenUtility(object):
         @defer.inlineCallbacks
         def callback(results):
             if do_summary:
-                yield print_summary(
+                yield self._print_summary(
                     results, config, initial_wmiprvse_stats, good_conn_infos)
 
-        d = yield self._strategy.act(good_conn_infos, config, callback)
+        d = self._strategy.act(good_conn_infos, config)
         d.addCallback(callback)
         d.addBoth(stop_reactor)
+
+    @defer.inlineCallbacks
+    def _print_summary(
+            self, results, config, initial_wmiprvse_stats, good_conn_infos):
+        global exit_status
+        final_wmiprvse_stats = {}
+        for conn_info in good_conn_infos:
+            client = create_winrm_client(conn_info)
+            final_wmiprvse_stats[conn_info.hostname] = \
+                yield get_remote_process_stats(client)
+        print >>sys.stderr, '\nSummary:'
+        print >>sys.stderr, '  Connected to', len(good_conn_infos), 'of', \
+                            len(config.conn_infos), 'hosts'
+        print >>sys.stderr, "  Processed", self._strategy.count_summary
+        failure_count = 0
+        for success, result in results:
+            if not success:
+                failure_count += 1
+        if failure_count:
+            exit_status = 1
+        print >>sys.stderr, '  Failed to process', failure_count,\
+            "responses"
+        print >>sys.stderr, "  Peak virtual memory useage:", get_vmpeak()
+        print >>sys.stderr, '  Remote CPU utilization:'
+        cpu_util_info = calculate_remote_cpu_util(
+            initial_wmiprvse_stats, final_wmiprvse_stats)
+        print_remote_cpu_util(cpu_util_info)
 
 
 class Config(object):
