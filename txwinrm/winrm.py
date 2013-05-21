@@ -45,7 +45,7 @@ class WinrmStrategy(object):
                     text = ', '.join(value)
                 print '{0}{1} = {2}'.format(indent, name, text)
 
-    def act(self, good_conn_infos, config):
+    def act(self, good_conn_infos, args, config):
         include_header = len(config.conn_infos) > 1
         ds = []
         for conn_info in good_conn_infos:

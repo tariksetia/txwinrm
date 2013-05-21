@@ -101,7 +101,7 @@ class ConfigDrivenUtility(object):
 
     @defer.inlineCallbacks
     def tx_main(self, args, config):
-        global exit_status
+        global _exit_status
         do_summary = len(config.conn_infos) > 1
         if do_summary:
             initial_wmiprvse_stats, good_conn_infos = \
@@ -110,24 +110,25 @@ class ConfigDrivenUtility(object):
             initial_wmiprvse_stats = None
             good_conn_infos = [config.conn_infos[0]]
         if not good_conn_infos:
-            exit_status = 1
+            _exit_status = 1
             stop_reactor()
             return
 
         @defer.inlineCallbacks
         def callback(results):
+            print "app ConfigDrivenUtility tx_main callback", results
             if do_summary:
                 yield self._print_summary(
                     results, config, initial_wmiprvse_stats, good_conn_infos)
 
-        d = self._strategy.act(good_conn_infos, config)
+        d = self._strategy.act(good_conn_infos, args, config)
         d.addCallback(callback)
         d.addBoth(stop_reactor)
 
     @defer.inlineCallbacks
     def _print_summary(
             self, results, config, initial_wmiprvse_stats, good_conn_infos):
-        global exit_status
+        global _exit_status
         final_wmiprvse_stats = {}
         for conn_info in good_conn_infos:
             client = create_winrm_client(conn_info)
@@ -142,7 +143,7 @@ class ConfigDrivenUtility(object):
             if not success:
                 failure_count += 1
         if failure_count:
-            exit_status = 1
+            _exit_status = 1
         print >>sys.stderr, '  Failed to process', failure_count,\
             "responses"
         print >>sys.stderr, "  Peak virtual memory useage:", get_vmpeak()

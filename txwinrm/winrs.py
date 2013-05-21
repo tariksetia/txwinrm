@@ -110,7 +110,7 @@ def single_shot_main(args):
         reactor.stop()
 
 
-class WinrsUtility(app.BaseUtility):
+class WinrsUtility(object):
 
     def tx_main(self, args, config):
         if args.kind == "long":
@@ -139,6 +139,12 @@ class WinrsUtility(app.BaseUtility):
                 "file at this time."
             return False
         return True
+
+    def add_config(self, parser, config):
+        pass
+
+    def adapt_args_to_config(self, args, config):
+        pass
 
 if __name__ == '__main__':
     app.main(WinrsUtility())

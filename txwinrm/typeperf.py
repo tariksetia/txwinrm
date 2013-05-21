@@ -17,7 +17,7 @@ from .shell import create_typeperf
 log = logging.getLogger('zen.winrm')
 
 
-class TypeperfUtility(app.BaseUtility):
+class TypeperfUtility(object):
 
     @defer.inlineCallbacks
     def tx_main(self, args, config):
@@ -56,6 +56,12 @@ class TypeperfUtility(app.BaseUtility):
                 "ERROR: The typeperf command does not support a " \
                 "configuration file at this time."
         return not args.config
+
+    def add_config(self, parser, config):
+        pass
+
+    def adapt_args_to_config(self, args, config):
+        pass
 
 if __name__ == '__main__':
     app.main(TypeperfUtility())
