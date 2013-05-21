@@ -22,9 +22,7 @@ class TypeperfUtility(app.BaseUtility):
     @defer.inlineCallbacks
     def tx_main(self, args, config):
         try:
-            typeperf = create_typeperf(
-                args.remote, args.authentication, args.username, args.password,
-                args.scheme, args.port)
+            typeperf = create_typeperf(args.conn_info)
             yield typeperf.start(args.counters, args.si)
             i = 0
             while args.sc == 0 or i < args.sc:
@@ -41,7 +39,8 @@ class TypeperfUtility(app.BaseUtility):
                     print >>sys.stderr, line
             yield typeperf.stop()
         finally:
-            reactor.stop()
+            if reactor.running:
+                reactor.stop()
 
     def add_args(self, parser):
         parser.add_argument("--si", type=int, default=1,

@@ -20,8 +20,8 @@ log = logging.getLogger('zen.winrm')
 class SubscriptionInfo(object):
 
     def __init__(self, path=None, select=None):
-        self.path = 
-        self.select = None
+        self.path = path
+        self.select = select
 
 
 def pprint_event(event):
@@ -83,7 +83,7 @@ class WecUtility(app.BaseUtility):
         config.subscr_infos = dct.values()
 
     def adapt_args_to_config(self, args, config):
-        config.subcr_infos = [SubscriptionInfo]
+        config.subscr_infos = [SubscriptionInfo(args.path, args.select)]
 
 if __name__ == '__main__':
     app.main(WecUtility())

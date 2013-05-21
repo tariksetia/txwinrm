@@ -11,10 +11,12 @@ import sys
 import logging
 from getpass import getpass
 from urlparse import urlparse
-from collections import namedtuple
 from argparse import ArgumentParser
 from ConfigParser import RawConfigParser
 from twisted.internet import reactor, defer
+from twisted.internet.error import TimeoutError
+from .enumerate import create_winrm_client
+from .util import ConnectionInfo, verify_conn_info, UnauthorizedError
 
 logging.basicConfig()
 log = logging.getLogger('zen.winrm')
@@ -22,33 +24,129 @@ _exit_status = 0
 DEFAULT_SCHEME = 'http'
 DEFAULT_PORT = 5985
 
-ConnectionInfo = namedtuple(
-    'ConnectionInfo',
-    ['hostname', 'auth_type', 'username', 'password', 'scheme', 'port'])
+
+def get_vmpeak():
+    with open('/proc/self/status') as status:
+        for line in status:
+            key, value = line.split(None, 1)
+            if key == 'VmPeak:':
+                return value
 
 
-class Builder(object):
+@defer.inlineCallbacks
+def get_remote_process_stats(client):
+    wql = 'select Name, IDProcess, PercentProcessorTime,' \
+          'Timestamp_Sys100NS from Win32_PerfRawData_PerfProc_Process ' \
+          'where name like "wmi%"'
+    items = yield client.enumerate(wql)
+    defer.returnValue(items)
 
-    def build(self):
-        return self._
+
+def calculate_remote_cpu_util(initial_stats, final_stats):
+    cpu_util_info = []
+    for hostname, initial_stats_items in initial_stats.iteritems():
+        final_stats_items = final_stats[hostname]
+        host_cpu_util_info = []
+        cpu_util_info.append([hostname, host_cpu_util_info])
+        for initial_stats_item in initial_stats_items:
+            name = initial_stats_item.Name
+            pid = initial_stats_item.IDProcess
+            for final_stats_item in final_stats_items:
+                if pid == final_stats_item.IDProcess:
+                    break
+            else:
+                print >>sys.stderr, "WARNING: Could not find final process " \
+                                    "stats for", hostname, pid
+                continue
+            x1 = float(final_stats_item.PercentProcessorTime)
+            x0 = float(initial_stats_item.PercentProcessorTime)
+            y1 = float(final_stats_item.Timestamp_Sys100NS)
+            y0 = float(initial_stats_item.Timestamp_Sys100NS)
+            cpu_pct = (x1 - x0) / (y1 - y0)
+            host_cpu_util_info.append((cpu_pct, name, pid))
+    return cpu_util_info
 
 
-class BaseUtility(object):
+def print_remote_cpu_util(cpu_util_info):
+    for hostname, stats in cpu_util_info:
+        print >>sys.stderr, "   ", hostname
+        for cpu_pct, name, pid in stats:
+            fmt = "      {cpu_pct:.2%} of CPU time used by {name} "\
+                  "process with pid {pid}"
+            print >>sys.stderr, fmt.format(hostname=hostname, cpu_pct=cpu_pct,
+                                           name=name, pid=pid)
 
-    def tx_main(args, config):
-        stop_reactor()
 
-    def add_args(parser):
-        pass
+@defer.inlineCallbacks
+def get_initial_wmiprvse_stats(config):
+    initial_wmiprvse_stats = {}
+    good_conn_infos = []
+    for conn_info in config.conn_infos:
+        try:
+            client =  create_winrm_client(conn_info)
+            initial_wmiprvse_stats[conn_info.hostname] = \
+                yield get_remote_process_stats(client)
+            good_conn_infos.append(conn_info)
+        except UnauthorizedError:
+            continue
+        except TimeoutError:
+            continue
+    defer.returnValue((initial_wmiprvse_stats, good_conn_infos))
 
-    def check_args(args):
-        return True
 
-    def add_config(parser, config):
-        pass
+@defer.inlineCallbacks
+def print_summary(results, config, initial_wmiprvse_stats, good_conn_infos):
+    global exit_status
+    final_wmiprvse_stats = {}
+    for conn_info in good_conn_infos:
+        client =  create_winrm_client(conn_info)
+        final_wmiprvse_stats[conn_info.hostname] = \
+            yield get_remote_process_stats(client)
+    print >>sys.stderr, '\nSummary:'
+    print >>sys.stderr, '  Connected to', len(good_conn_infos), 'of', \
+                        len(config.conn_infos), 'hosts'
+    print >>sys.stderr, "  Processed", GLOBAL_ELEMENT_COUNT, "elements"
+    failure_count = 0
+    for success, result in results:
+        if not success:
+            failure_count += 1
+    if failure_count:
+        exit_status = 1
+    print >>sys.stderr, '  Failed to process', failure_count,\
+        "responses"
+    print >>sys.stderr, "  Peak virtual memory useage:", get_vmpeak()
+    print >>sys.stderr, '  Remote CPU utilization:'
+    cpu_util_info = calculate_remote_cpu_util(
+        initial_wmiprvse_stats, final_wmiprvse_stats)
+    print_remote_cpu_util(cpu_util_info)
 
-    def adapt_args_to_config(self, args, config):
-        pass
+
+class ConfigDrivenUtility(object):
+
+    @defer.inlineCallbacks
+    def tx_main(self, args, config):
+        global exit_status
+        do_summary = len(config.conn_infos) > 1
+        if do_summary:
+            initial_wmiprvse_stats, good_conn_infos = \
+                yield get_initial_wmiprvse_stats(config)
+        else:
+            initial_wmiprvse_stats = None
+            good_conn_infos = [config.conn_infos[0]]
+        if not good_conn_infos:
+            exit_status = 1
+            stop_reactor()
+            return
+
+        @defer.inlineCallbacks
+        def callback(results):
+            if do_summary:
+                yield print_summary(
+                    results, config, initial_wmiprvse_stats, good_conn_infos)
+
+        d = yield self._strategy.act(good_conn_infos, config, callback)
+        d.addCallback(callback)
+        d.addBoth(stop_reactor)
 
 
 class Config(object):
@@ -81,8 +179,14 @@ def _parse_config_file(filename, utility):
     for remote, cred_key in parser.items('remotes'):
         auth_type, username, password = creds[cred_key]
         hostname, scheme, port = _parse_remote(remote)
-        conn_infos.append(ConnectionInfo(
-            hostname, auth_type, username, password, scheme, port))
+        conn_info = ConnectionInfo(
+            hostname, auth_type, username, password, scheme, port)
+        try:
+            verify_conn_info(conn_info)
+        except Exception as e:
+            print >>sys.stderr, "ERROR: {0}".format(e)
+            continue
+        conn_infos.append(conn_info)
     config = Config(conn_infos)
     utility.add_config(parser, config)
     return config
@@ -111,6 +215,11 @@ def _parse_args(utility):
             args.conn_info = ConnectionInfo(
                 hostname, args.authentication, args.username, password, scheme,
                 port)
+            try:
+                verify_conn_info(args.conn_info)
+            except Exception as e:
+                print >>sys.stderr, "ERROR: {0}".format(e)
+                sys.exit(1)
     for attr in 'remote', 'authentication', 'username':
         delattr(args, attr)
     return args

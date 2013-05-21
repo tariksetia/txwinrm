@@ -9,13 +9,23 @@
 
 from twisted.internet import defer
 from .enumerate import create_winrm_client
+from .util import ConnectionInfo
 
 
 class WinrmCollectClient(object):
 
     @defer.inlineCallbacks
-    def do_collect(self, hostname, auth_type, username, password, wqls):
-        client = create_winrm_client(hostname, auth_type, username, password)
+    def do_collect(self, conn_info, wqls):
+        """
+        conn_info has the following attributes
+            hostname
+            auth_type: basic or kerberos
+            username
+            password
+            scheme: http (https coming soon)
+            port: int
+        """
+        client = create_winrm_client(conn_info)
         items = {}
         for wql in wqls:
             items[wql] = yield client.enumerate(wql)
@@ -34,8 +44,10 @@ if __name__ == '__main__':
 
     @defer.inlineCallbacks
     def do_example_collect():
+        conn_info = ConnectionInfo(
+            "gilroy", "basic", "Administrator", getpass(), "http", 5985)
         items = yield winrm.do_collect(
-            "gilroy", "basic", "Administrator", getpass(),
+            conn_info,
             ['Select Caption, DeviceID, Name From Win32_Processor',
              'select Name, Label, Capacity from Win32_Volume'])
         pprint(items)

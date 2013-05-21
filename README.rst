@@ -53,6 +53,22 @@ Centos 6.3 x86_64 (Python 2.6.6)
     # now you can run the txwinrm commands (winrm, winrs, typeperf, and wecutil) as a normal user
 
 
+Zenoss Core or Resource Manager 4.2.x installed on CentOS 6 (Zenoss Python 2.7)
+
+::
+
+    # as root
+    yum -y install gcc krb5-devel krb5-workstation
+
+    # as the zenoss user
+    easy_install txwinrm
+
+    # as root (if you want to use a Windows domain)
+    genkrb5conf <windows domain> <domain controller IP address>
+
+    # now you can run the txwinrm commands (winrm, winrs, typeperf, and wecutil) as the zenoss user
+
+
 Current Feature Support
 -----------------------
 

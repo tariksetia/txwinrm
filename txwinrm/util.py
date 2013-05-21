@@ -13,6 +13,7 @@ import base64
 import logging
 import httplib
 from datetime import datetime
+from collections import namedtuple
 from xml.etree import cElementTree as ET
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol, ProcessProtocol
@@ -44,6 +45,14 @@ _REQUEST_TEMPLATE_DIR = os.path.join(
 _REQUEST_TEMPLATES = {}
 _CONTENT_TYPE = {'Content-Type': ['application/soap+xml;charset=UTF-8']}
 _MAX_KERBEROS_RETRIES = 3
+_MARKER = object()
+
+
+def _has_get_attr(obj, attr_name):
+    attr_value = getattr(obj, attr_name, _MARKER)
+    if attr_value is _MARKER:
+        return False, None
+    return True, attr_value
 
 
 class MyWebClientContextFactory(object):
@@ -321,9 +330,39 @@ def _get_url_and_headers(conn_info):
     defer.returnValue((url, headers))
 
 
+ConnectionInfo = namedtuple(
+    'ConnectionInfo',
+    ['hostname', 'auth_type', 'username', 'password', 'scheme', 'port'])
+
+
+def verify_conn_info(conn_info):
+    has_hostname, hostname = _has_get_attr(conn_info, 'hostname')
+    if not has_hostname or not hostname:
+        raise Exception("hostname missing")
+    has_auth_type, auth_type = _has_get_attr(conn_info, 'auth_type')
+    if not has_auth_type or auth_type not in ('basic', 'kerberos'):
+        raise Exception(
+            "auth_type must be basic or kerberos: {0}".format(auth_type))
+    has_username, username = _has_get_attr(conn_info, 'username')
+    if not has_username or not username:
+        raise Exception("username missing")
+    has_password, password = _has_get_attr(conn_info, 'password')
+    if not has_password or not password:
+        raise Exception("password missing")
+    has_scheme, scheme = _has_get_attr(conn_info, 'scheme')
+    if not has_scheme or scheme != 'http':
+        raise Exception(
+            "scheme must be http (https is not implemented yet): {0}"
+            .format(scheme))
+    has_port, port = _has_get_attr(conn_info, 'port')
+    if not has_port or not port or not isinstance(port, int):
+        raise Exception("illegal value for port: {0}".format(port))
+
+
 class RequestSender(object):
 
     def __init__(self, conn_info):
+        verify_conn_info(conn_info)
         self._conn_info = conn_info
         self._url = None
         self._headers = None

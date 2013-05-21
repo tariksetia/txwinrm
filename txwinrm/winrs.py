@@ -57,9 +57,7 @@ class WinrsCmd(cmd.Cmd):
 @defer.inlineCallbacks
 def long_running_main(args):
     try:
-        client = create_long_running_command(
-            args.remote, args.authentication, args.username, args.password,
-            args.scheme, args.port)
+        client = create_long_running_command(args.conn_info)
         yield client.start(args.command)
         for i in xrange(5):
             stdout, stderr = yield task.deferLater(
@@ -72,10 +70,7 @@ def long_running_main(args):
 
 @defer.inlineCallbacks
 def interactive_main(args):
-    remote = args.remote
-    shell = create_remote_shell(
-        remote, args.authentication, args.username, args.password, args.scheme,
-        args.port)
+    shell = create_remote_shell(args.conn_info)
     response = yield shell.create()
     intro = '\n'.join(response.stdout)
     winrs_cmd = WinrsCmd(shell)
@@ -84,24 +79,22 @@ def interactive_main(args):
 
 @defer.inlineCallbacks
 def batch_main(args):
-    remote = args.remote
+    hostname = args.conn_info.hostname
     command = args.command
     try:
-        shell = create_remote_shell(
-            remote, args.authentication, args.username, args.password,
-            args.scheme, args.port)
-        print 'Creating shell on {0}.'.format(remote)
+        shell = create_remote_shell(args.conn_info)
+        print 'Creating shell on {0}.'.format(hostname)
         yield shell.create()
         for i in range(10):
-            print '\nSending to {0}:\n  {1}'.format(remote, command)
+            print '\nSending to {0}:\n  {1}'.format(hostname, command)
             response = yield shell.run_command(command)
-            print '\nReceived from {0}:'.format(remote)
+            print '\nReceived from {0}:'.format(hostname)
             print_output(response.stdout, response.stderr)
         response = yield shell.delete()
-        print "\nDeleted shell on {0}.".format(remote)
+        print "\nDeleted shell on {0}.".format(hostname)
         print_output(response.stdout, response.stderr)
         print "\nExit code of shell on {0}: {1}".format(
-            remote, response.exit_code)
+            hostname, response.exit_code)
     finally:
         if reactor.running:
             reactor.stop()
@@ -110,9 +103,7 @@ def batch_main(args):
 @defer.inlineCallbacks
 def single_shot_main(args):
     try:
-        client = create_single_shot_command(
-            args.remote, args.authentication, args.username, args.password,
-            args.scheme, args.port)
+        client = create_single_shot_command(args.conn_info)
         results = yield client.run_command(args.command)
         pprint(results)
     finally:
