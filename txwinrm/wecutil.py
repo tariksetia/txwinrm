@@ -92,7 +92,7 @@ class WecUtility(app.ConfigDrivenUtility):
     def add_args(self, parser):
         parser.add_argument("--path", "-p", default='Application')
         parser.add_argument("--select", "-s", default='*')
-        parser.add_argument("--num-pulls", "-n", type=int, default=0)
+        parser.add_argument("--num-pulls", "-n", type=int, default=2)
 
     def check_args(self, args):
         return True

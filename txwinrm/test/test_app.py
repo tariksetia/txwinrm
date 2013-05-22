@@ -9,7 +9,7 @@
 
 from twisted.trial import unittest
 from twisted.internet import defer
-from .. import winrm
+from .. import app
 
 INITIAL_STATS = {
     'berkeley': [
@@ -216,13 +216,6 @@ EXPECTED_CPU_UTIL_INFO = [
       (0.0042017347666543844, 'WmiPrvSE#2', '1468')]]]
 
 
-class Item(object):
-
-    def __init__(self, left, right):
-        self.left = left
-        self.right = right
-
-
 class Client(object):
 
     def enumerate(self, wql):
@@ -250,22 +243,18 @@ def convert_stats(stats_with_dicts):
 class TestApp(unittest.TestCase):
 
     def test_get_vmpeak(self):
-        actual = winrm.get_vmpeak()
+        actual = app.get_vmpeak()
         self.assertIsNotNone(actual)
-
-    def test_print_items(self):
-        winrm.print_items(
-            [Item(1, 2), Item('foo', 'bar')], 'myhost', 'my wql query', True)
 
     @defer.inlineCallbacks
     def test_get_remote_process_stats(self):
-        actual = yield winrm.get_remote_process_stats(Client())
+        actual = yield app.get_remote_process_stats(Client())
         self.assertEqual(actual, 'foo')
 
     def test_calculate_remote_cpu_util(self):
         initial = convert_stats(INITIAL_STATS)
         final = convert_stats(FINAL_STATS)
-        actual = winrm.calculate_remote_cpu_util(initial, final)
+        actual = app.calculate_remote_cpu_util(initial, final)
         self.assertEqual(actual, EXPECTED_CPU_UTIL_INFO)
 
 if __name__ == '__main__':

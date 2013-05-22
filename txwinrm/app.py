@@ -116,7 +116,6 @@ class ConfigDrivenUtility(object):
 
         @defer.inlineCallbacks
         def callback(results):
-            print "app ConfigDrivenUtility tx_main callback", results
             if do_summary:
                 yield self._print_summary(
                     results, config, initial_wmiprvse_stats, good_conn_infos)

@@ -335,28 +335,52 @@ ConnectionInfo = namedtuple(
     ['hostname', 'auth_type', 'username', 'password', 'scheme', 'port'])
 
 
-def verify_conn_info(conn_info):
+def verify_hostname(conn_info):
     has_hostname, hostname = _has_get_attr(conn_info, 'hostname')
     if not has_hostname or not hostname:
         raise Exception("hostname missing")
+
+
+def verify_auth_type(conn_info):
     has_auth_type, auth_type = _has_get_attr(conn_info, 'auth_type')
     if not has_auth_type or auth_type not in ('basic', 'kerberos'):
         raise Exception(
             "auth_type must be basic or kerberos: {0}".format(auth_type))
+
+
+def verify_username(conn_info):
     has_username, username = _has_get_attr(conn_info, 'username')
     if not has_username or not username:
         raise Exception("username missing")
+
+
+def verify_password(conn_info):
     has_password, password = _has_get_attr(conn_info, 'password')
     if not has_password or not password:
         raise Exception("password missing")
+
+
+def verify_scheme(conn_info):
     has_scheme, scheme = _has_get_attr(conn_info, 'scheme')
     if not has_scheme or scheme != 'http':
         raise Exception(
             "scheme must be http (https is not implemented yet): {0}"
             .format(scheme))
+
+
+def verify_port(conn_info):
     has_port, port = _has_get_attr(conn_info, 'port')
     if not has_port or not port or not isinstance(port, int):
         raise Exception("illegal value for port: {0}".format(port))
+
+
+def verify_conn_info(conn_info):
+    verify_hostname(conn_info)
+    verify_auth_type(conn_info)
+    verify_username(conn_info)
+    verify_password(conn_info)
+    verify_scheme(conn_info)
+    verify_port(conn_info)
 
 
 class RequestSender(object):

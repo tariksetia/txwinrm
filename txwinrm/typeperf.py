@@ -24,23 +24,27 @@ class TypeperfUtility(object):
         try:
             typeperf = create_typeperf(args.conn_info)
             yield typeperf.start(args.counters, args.si)
-            i = 0
-            while args.sc == 0 or i < args.sc:
-                if args.sc > 0:
-                    i += 1
-                results, stderr = yield task.deferLater(
-                    reactor, args.si, typeperf.receive)
-                for key, values in results.iteritems():
-                    print key
-                    for timestamp, value in values:
-                        date_str = datetime.strftime(timestamp, "%H:%M:%S")
-                        print '  {0}: {1}'.format(date_str, value)
-                for line in stderr:
-                    print >>sys.stderr, line
+            yield self._receive_parse_print(args, typeperf)
             yield typeperf.stop()
         finally:
             if reactor.running:
                 reactor.stop()
+
+    @defer.inlineCallbacks
+    def _receive_parse_print(self, args, typeperf):
+        i = 0
+        while args.sc == 0 or i < args.sc:
+            if args.sc > 0:
+                i += 1
+            results, stderr = yield task.deferLater(
+                reactor, args.si, typeperf.receive)
+            for key, values in results.iteritems():
+                print key
+                for timestamp, value in values:
+                    date_str = datetime.strftime(timestamp, "%H:%M:%S")
+                    print '  {0}: {1}'.format(date_str, value)
+            for line in stderr:
+                print >>sys.stderr, line
 
     def add_args(self, parser):
         parser.add_argument("--si", type=int, default=1,

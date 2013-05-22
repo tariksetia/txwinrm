@@ -48,7 +48,7 @@ class WinrsCmd(cmd.Cmd):
     @defer.inlineCallbacks
     def _exit(self):
         yield self._shell.delete()
-        reactor.stop()
+        app.stop_reactor()
 
     def postloop(self):
         print
@@ -65,7 +65,7 @@ def long_running_main(args):
             print_output(stdout, stderr)
         yield client.stop()
     finally:
-        reactor.stop()
+        app.stop_reactor()
 
 
 @defer.inlineCallbacks
@@ -96,8 +96,7 @@ def batch_main(args):
         print "\nExit code of shell on {0}: {1}".format(
             hostname, response.exit_code)
     finally:
-        if reactor.running:
-            reactor.stop()
+        app.stop_reactor()
 
 
 @defer.inlineCallbacks
@@ -107,7 +106,7 @@ def single_shot_main(args):
         results = yield client.run_command(args.command)
         pprint(results)
     finally:
-        reactor.stop()
+        app.stop_reactor()
 
 
 class WinrsUtility(object):
