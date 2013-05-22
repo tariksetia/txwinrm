@@ -138,14 +138,15 @@ class ConfigDrivenUtility(object):
         print >>sys.stderr, '  Connected to', len(good_conn_infos), 'of', \
                             len(config.conn_infos), 'hosts'
         print >>sys.stderr, "  Processed", self._strategy.count_summary
-        failure_count = 0
-        for success, result in results:
-            if not success:
-                failure_count += 1
-        if failure_count:
-            _exit_status = 1
-        print >>sys.stderr, '  Failed to process', failure_count,\
-            "responses"
+        if results is not None:
+            failure_count = 0
+            for success, result in results:
+                if not success:
+                    failure_count += 1
+            if failure_count:
+                _exit_status = 1
+            print >>sys.stderr, '  Failed to process', failure_count,\
+                "responses"
         print >>sys.stderr, "  Peak virtual memory useage:", get_vmpeak()
         print >>sys.stderr, '  Remote CPU utilization:'
         cpu_util_info = calculate_remote_cpu_util(

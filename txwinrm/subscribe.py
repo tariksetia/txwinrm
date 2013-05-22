@@ -7,11 +7,13 @@
 #
 ##############################################################################
 
+import logging
 from collections import namedtuple
 from twisted.internet import defer
 from . import constants as c
 from .util import create_etree_request_sender, get_datetime
 
+log = logging.getLogger('zen.winrm')
 _MAX_PULL_REQUESTS_PER_BATCH = 999999
 
 _EVENT_QUERY_FMT = '&lt;QueryList&gt;&lt;Query Path=&quot;{path}&quot;&gt;' \
@@ -119,6 +121,7 @@ class EventSubscription(object):
         self._enumeration_context = None
 
     def __del__(self):
+        log.debug("Deleting EventSubscription object; calling unsubscribe.")
         self.unsubscribe()
 
     @defer.inlineCallbacks
