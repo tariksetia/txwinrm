@@ -332,6 +332,46 @@ The following command shows an example of subscribing to the Windows event log:
     Pull #2
 
 
+You can run wecutil against a matrix of hosts and event queries by using a config file.
+
+::
+
+    $ wecutil -c examples/config.ini
+    milpitas System/'*' pull #1 of 2
+    milpitas Application/'*' pull #1 of 2
+    gilroy System/'*' pull #1 of 2
+    ...
+    milpitas System/'*' Event(system=System(provider='Microsoft-Windows-...
+    ...
+    milpitas Application/'*' pull #2 of 2
+    ...
+    
+    Summary:
+      Connected to 4 of 4 hosts
+      Processed 12 events
+      Peak virtual memory useage: 361060 kB
+
+      Remote CPU utilization:
+        saratoga
+          0.15% of CPU time used by WmiPrvSE process with pid 1640
+          0.96% of CPU time used by WmiPrvSE#1 process with pid 2000
+          0.00% of CPU time used by WmiApSrv process with pid 604
+          0.07% of CPU time used by WmiPrvSE#2 process with pid 1604
+        gilroy
+          0.00% of CPU time used by WmiPrvSE process with pid 1384
+          0.00% of CPU time used by WmiPrvSE#1 process with pid 1684
+          0.00% of CPU time used by WmiApSrv process with pid 1924
+          0.15% of CPU time used by WmiPrvSE#2 process with pid 1348
+        milpitas
+          0.36% of CPU time used by wmiprvse process with pid 1924
+          1.01% of CPU time used by wmiprvse process with pid 816
+        berkeley
+          0.00% of CPU time used by WmiPrvSE process with pid 1624
+          0.00% of CPU time used by WmiPrvSE#1 process with pid 1744
+          0.00% of CPU time used by WmiApSrv process with pid 1620
+          0.07% of CPU time used by WmiPrvSE#2 process with pid 1280
+
+
 Feedback
 --------
 
