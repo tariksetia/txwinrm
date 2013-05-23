@@ -33,7 +33,14 @@ from pprint import pformat
 from xml import sax
 from twisted.internet import defer
 from twisted.internet.protocol import Protocol
-from twisted.web.client import ResponseFailed
+
+try:
+    from twisted.web.client import ResponseFailed
+    ResponseFailed
+except ImportError:
+    class ResponseFailed(Exception):
+        pass
+
 from . import constants as c
 from .util import RequestSender, get_datetime
 
