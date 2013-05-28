@@ -113,7 +113,7 @@ You can pass a single host a query via the command line...
 
 
 Another option is to create an ini-style config file and hit multiple targets
-with multiple queries. Example config is at examples/config.ini
+with multiple queries. Example config is at `examples/config.ini <https://raw.github.com/zenoss/txwinrm/master/examples/config.ini>`_
 
 ::
 
