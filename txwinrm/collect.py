@@ -7,15 +7,23 @@
 #
 ##############################################################################
 
+from collections import namedtuple
 from twisted.internet import defer
-from .enumerate import create_winrm_client
+from .enumerate import create_winrm_client, DEFAULT_RESOURCE_URI
 from .util import ConnectionInfo
+
+
+EnumInfo = namedtuple('EnumInfo', ['wql', 'resource_uri'])
+
+
+def create_enum_info(wql, resource_uri=DEFAULT_RESOURCE_URI):
+    return EnumInfo(wql, resource_uri)
 
 
 class WinrmCollectClient(object):
 
     @defer.inlineCallbacks
-    def do_collect(self, conn_info, wqls):
+    def do_collect(self, conn_info, enum_infos):
         """
         conn_info has the following attributes
             hostname
@@ -27,8 +35,9 @@ class WinrmCollectClient(object):
         """
         client = create_winrm_client(conn_info)
         items = {}
-        for wql in wqls:
-            items[wql] = yield client.enumerate(wql)
+        for enum_info in enum_infos:
+            items[enum_info] = yield client.enumerate(
+                enum_info.wql, enum_info.resource_uri)
         defer.returnValue(items)
 
 
@@ -46,10 +55,11 @@ if __name__ == '__main__':
     def do_example_collect():
         conn_info = ConnectionInfo(
             "gilroy", "basic", "Administrator", getpass(), "http", 5985)
-        items = yield winrm.do_collect(
-            conn_info,
-            ['Select Caption, DeviceID, Name From Win32_Processor',
-             'select Name, Label, Capacity from Win32_Volume'])
+        wql1 = create_enum_info(
+            'Select Caption, DeviceID, Name From Win32_Processor')
+        wql2 = create_enum_info(
+            'select Name, Label, Capacity from Win32_Volume')
+        items = yield winrm.do_collect(conn_info, [wql1, wql2])
         pprint(items)
         reactor.stop()
 
