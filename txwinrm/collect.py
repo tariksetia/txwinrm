@@ -10,7 +10,7 @@
 from collections import namedtuple
 from twisted.internet import defer
 from .enumerate import create_winrm_client, DEFAULT_RESOURCE_URI
-from .util import ConnectionInfo
+from .util import ConnectionInfo, RequestError
 
 
 EnumInfo = namedtuple('EnumInfo', ['wql', 'resource_uri'])
@@ -36,8 +36,11 @@ class WinrmCollectClient(object):
         client = create_winrm_client(conn_info)
         items = {}
         for enum_info in enum_infos:
-            items[enum_info] = yield client.enumerate(
-                enum_info.wql, enum_info.resource_uri)
+            try:
+                items[enum_info] = yield client.enumerate(
+                    enum_info.wql, enum_info.resource_uri)
+            except RequestError:
+                continue
         defer.returnValue(items)
 
 
