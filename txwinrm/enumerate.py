@@ -42,7 +42,7 @@ except ImportError:
         pass
 
 from . import constants as c
-from .util import RequestSender, get_datetime
+from .util import RequestSender, get_datetime, RequestError
 
 log = logging.getLogger('zen.winrm')
 _MAX_REQUESTS_PER_ENUMERATION = 9999
@@ -91,6 +91,9 @@ class WinrmClient(object):
         except ResponseFailed as e:
             for reason in e.reasons:
                 log.error('{0} {1}'.format(self._hostname, reason.value))
+            raise
+        except RequestError as e:
+            log.debug('{0} {1}'.format(self._hostname, e))
             raise
         except Exception as e:
             log.error('{0} {1}'.format(self._hostname, e))
