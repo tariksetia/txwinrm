@@ -17,7 +17,7 @@ import unittest
 from itertools import izip
 from xml import sax
 from datetime import datetime
-from ..enumerate import create_parser_and_factory, get_datetime, \
+from ..enumerate import create_parser_and_factory, \
     ItemsContentHandler, ChainingContentHandler, TextBufferingContentHandler, \
     ItemsAccumulator, AddPropertyWithoutItemError, Item, TagStackStateError, \
     TagComparer
@@ -384,16 +384,6 @@ class TestDataType(unittest.TestCase):
 
     def tearDown(self):
         pass
-
-    def test_datetime(self):
-        data = [("2013-04-09T15:42:20.4124Z",
-                 datetime(2013, 4, 9, 15, 42, 20, 412400)),
-                ("2013-04-09T15:42:20Z",
-                 datetime(2013, 4, 9, 15, 42, 20)),
-                ]
-        for date_str, expected in data:
-            actual = get_datetime(date_str)
-            self.assertEqual(actual, expected)
 
     def _do_test_of_prop_parsing(self, data):
         for xml_str, prop, expected in data:

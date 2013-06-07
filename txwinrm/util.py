@@ -458,18 +458,22 @@ def create_etree_request_sender(conn_info):
     return EtreeRequestSender(sender)
 
 
+TZOFFSET_PATTERN = re.compile(r'[-+]\d+:\d\d$')
+
+
 def get_datetime(text):
     """
     Parse the date from a WinRM response and return a datetime object.
     """
-    if text.endswith('Z'):
-        if '.' in text:
+    text2 = TZOFFSET_PATTERN.sub('Z', text)
+    if text2.endswith('Z'):
+        if '.' in text2:
             format = "%Y-%m-%dT%H:%M:%S.%fZ"
-            date_string = _NANOSECONDS_PATTERN.sub(r'.\g<1>', text)
+            date_string = _NANOSECONDS_PATTERN.sub(r'.\g<1>', text2)
         else:
             format = "%Y-%m-%dT%H:%M:%SZ"
-            date_string = text
+            date_string = text2
     else:
         format = '%m/%d/%Y %H:%M:%S.%f'
-        date_string = text
+        date_string = text2
     return datetime.strptime(date_string, format)
