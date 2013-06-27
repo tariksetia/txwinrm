@@ -17,7 +17,6 @@ from collections import namedtuple
 from xml.etree import cElementTree as ET
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol, ProcessProtocol
-from twisted.web.client import Agent
 from twisted.internet.ssl import CertificateOptions
 from twisted.web.http_headers import Headers
 from . import constants as c
@@ -70,19 +69,17 @@ def _get_agent():
         context_factory = MyWebClientContextFactory()
         try:
             # HTTPConnectionPool has been present since Twisted version 12.1
-            from twisted.web.client import HTTPConnectionPool
-            pool = HTTPConnectionPool(reactor, persistent=True)
-            pool.maxPersistentPerHost = _MAX_PERSISTENT_PER_HOST
-            pool.cachedConnectionTimeout = _CACHED_CONNECTION_TIMEOUT
-            _AGENT = Agent(reactor, context_factory,
-                           connectTimeout=_CONNECT_TIMEOUT, pool=pool)
+            from twisted.web.client import Agent, HTTPConnectionPool
+            Agent, HTTPConnectionPool  # avoid unused import warning
         except ImportError:
-            try:
-                # connectTimeout first showed up in Twisted version 11.1
-                _AGENT = Agent(
-                    reactor, context_factory, connectTimeout=_CONNECT_TIMEOUT)
-            except TypeError:
-                _AGENT = Agent(reactor, context_factory)
+            # import patched version of 11.0.0 client (and _newclient)
+            # http://twistedmatrix.com/trac/raw-attachment/ticket/3420/webclient.diff
+            from .twisted_web.client import Agent, HTTPConnectionPool
+            Agent, HTTPConnectionPool  # avoid unused import warning
+    pool = HTTPConnectionPool(reactor, persistent=True)
+    pool.maxPersistentPerHost = _MAX_PERSISTENT_PER_HOST
+    pool.cachedConnectionTimeout = _CACHED_CONNECTION_TIMEOUT
+    _AGENT = Agent(reactor, context_factory, connectTimeout=_CONNECT_TIMEOUT, pool=pool)
     return _AGENT
 
 
