@@ -70,16 +70,15 @@ def _get_agent():
         try:
             # HTTPConnectionPool has been present since Twisted version 12.1
             from twisted.web.client import Agent, HTTPConnectionPool
-            Agent, HTTPConnectionPool  # avoid unused import warning
+            pool = HTTPConnectionPool(reactor, persistent=True)
+            pool.maxPersistentPerHost = _MAX_PERSISTENT_PER_HOST
+            pool.cachedConnectionTimeout = _CACHED_CONNECTION_TIMEOUT
+            _AGENT = Agent(reactor, context_factory, connectTimeout=_CONNECT_TIMEOUT, pool=pool)
         except ImportError:
             # import patched version of 11.0.0 client (and _newclient)
             # http://twistedmatrix.com/trac/raw-attachment/ticket/3420/webclient.diff
-            from .twisted_web.client import Agent, HTTPConnectionPool
-            Agent, HTTPConnectionPool  # avoid unused import warning
-    pool = HTTPConnectionPool(reactor, persistent=True)
-    pool.maxPersistentPerHost = _MAX_PERSISTENT_PER_HOST
-    pool.cachedConnectionTimeout = _CACHED_CONNECTION_TIMEOUT
-    _AGENT = Agent(reactor, context_factory, connectTimeout=_CONNECT_TIMEOUT, pool=pool)
+            from .twisted_web.client import Agent
+            _AGENT = Agent(reactor, context_factory, persistent=True)
     return _AGENT
 
 
