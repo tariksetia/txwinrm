@@ -33,16 +33,8 @@ from pprint import pformat
 from xml import sax
 from twisted.internet import defer
 from twisted.internet.protocol import Protocol
-
-try:
-    from twisted.web.client import ResponseFailed
-    ResponseFailed
-except ImportError:
-    class ResponseFailed(Exception):
-        pass
-
 from . import constants as c
-from .util import RequestSender, get_datetime, RequestError
+from .util import RequestSender, get_datetime, RequestError, TwistedResponseFailed
 
 log = logging.getLogger('zen.winrm')
 _MAX_REQUESTS_PER_ENUMERATION = 9999
@@ -88,7 +80,7 @@ class WinrmClient(object):
                 request_template_name = 'pull'
             else:
                 raise Exception("Reached max requests per enumeration.")
-        except ResponseFailed as e:
+        except TwistedResponseFailed as e:
             for reason in e.reasons:
                 log.error('{0} {1}'.format(self._hostname, reason.value))
             raise
@@ -239,7 +231,7 @@ class ParserFeedingProtocol(Protocol):
             except:
                 log.debug('Could not prettify response XML: "{0}"'
                           .format(self._debug_data))
-        if isinstance(reason.value, ResponseFailed):
+        if isinstance(reason.value, TwistedResponseFailed):
             log.error("Connection lost: {0}".format(reason.value.reasons[0]))
         self.d.callback(None)
 

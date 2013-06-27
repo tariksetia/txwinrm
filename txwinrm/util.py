@@ -17,9 +17,7 @@ from collections import namedtuple
 from xml.etree import cElementTree as ET
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol, ProcessProtocol
-from twisted.web.client import Agent
 from twisted.internet.ssl import CertificateOptions
-from twisted.web.http_headers import Headers
 from . import constants as c
 
 KERBEROS_INSTALLED = False
@@ -32,6 +30,8 @@ except ImportError:
 log = logging.getLogger('zen.winrm')
 _XML_WHITESPACE_PATTERN = re.compile(r'>\s+<')
 _AGENT = None
+_Headers = None
+TwistedResponseFailed = None
 _MAX_PERSISTENT_PER_HOST = 200
 _CACHED_CONNECTION_TIMEOUT = 24000
 _CONNECT_TIMEOUT = 500
@@ -64,25 +64,33 @@ class MyWebClientContextFactory(object):
         return self._options.getContext()
 
 
+def _create_agent(Agent, HTTPConnectionPool):
+    context_factory = MyWebClientContextFactory()
+    pool = HTTPConnectionPool(reactor, persistent=True)
+    pool.maxPersistentPerHost = _MAX_PERSISTENT_PER_HOST
+    pool.cachedConnectionTimeout = _CACHED_CONNECTION_TIMEOUT
+    return Agent(reactor, context_factory, connectTimeout=_CONNECT_TIMEOUT, pool=pool)
+
+
 def _get_agent():
     global _AGENT
+    global _Headers
+    global TwistedResponseFailed
     if _AGENT is None:
-        context_factory = MyWebClientContextFactory()
         try:
             # HTTPConnectionPool has been present since Twisted version 12.1
-            from twisted.web.client import HTTPConnectionPool
-            pool = HTTPConnectionPool(reactor, persistent=True)
-            pool.maxPersistentPerHost = _MAX_PERSISTENT_PER_HOST
-            pool.cachedConnectionTimeout = _CACHED_CONNECTION_TIMEOUT
-            _AGENT = Agent(reactor, context_factory,
-                           connectTimeout=_CONNECT_TIMEOUT, pool=pool)
+            from twisted.web.client import Agent, HTTPConnectionPool, ResponseFailed
+            from twisted.web.http_headers import Headers
+            _AGENT = _create_agent(Agent, HTTPConnectionPool)
+            _Headers = Headers
+            TwistedResponseFailed = ResponseFailed
         except ImportError:
-            try:
-                # connectTimeout first showed up in Twisted version 11.1
-                _AGENT = Agent(
-                    reactor, context_factory, connectTimeout=_CONNECT_TIMEOUT)
-            except TypeError:
-                _AGENT = Agent(reactor, context_factory)
+            # For earlier Twisted versions use local copy of web.client and _newclient from Twisted 12.1
+            from .twisted_web_12_1.client import Agent, HTTPConnectionPool, ResponseFailed
+            from .twisted_web_12_1.http_headers import Headers
+            _AGENT = _create_agent(Agent, HTTPConnectionPool)
+            _Headers = Headers
+            TwistedResponseFailed = ResponseFailed
     return _AGENT
 
 
@@ -287,7 +295,7 @@ def _authenticate_with_kerberos(conn_info, url):
     gss_client = AuthGSSClient(service, conn_info.username, conn_info.password)
     base64_client_data = yield gss_client.get_base64_client_data()
     auth = 'Kerberos {0}'.format(base64_client_data)
-    k_headers = Headers(_CONTENT_TYPE)
+    k_headers = _Headers(_CONTENT_TYPE)
     k_headers.addRawHeader('Authorization', auth)
     k_headers.addRawHeader('Content-Length', '0')
     response = yield _get_agent().request('POST', url, k_headers, None)
@@ -319,7 +327,7 @@ def _authenticate_with_kerberos(conn_info, url):
 @defer.inlineCallbacks
 def _get_url_and_headers(conn_info):
     url = "{c.scheme}://{c.hostname}:{c.port}/wsman".format(c=conn_info)
-    headers = Headers(_CONTENT_TYPE)
+    headers = _Headers(_CONTENT_TYPE)
     if conn_info.auth_type == 'basic':
         headers.addRawHeader(
             'Authorization', _get_basic_auth_header(conn_info))
