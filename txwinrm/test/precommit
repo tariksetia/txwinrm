@@ -11,7 +11,7 @@
 
 (
     set -x
-    flake8 txwinrm
+    flake8 --ignore=E122,E123,E501 txwinrm
 ) || (
     echo
     echo "ERROR: Code does not conform to PEP-8"

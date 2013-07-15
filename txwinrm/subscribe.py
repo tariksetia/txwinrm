@@ -120,12 +120,6 @@ class EventSubscription(object):
         self._subscription_id = None
         self._enumeration_context = None
 
-    def __del__(self):
-        #log.debug("Deleting EventSubscription object; calling unsubscribe.")
-        #self.unsubscribe()
-        #TO DO: When trying to unsubscribe an error is thrown.
-        return
-
     @defer.inlineCallbacks
     def subscribe(self, path='Application', select='*'):
         if self._subscription_id is not None:
