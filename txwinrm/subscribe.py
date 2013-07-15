@@ -121,8 +121,10 @@ class EventSubscription(object):
         self._enumeration_context = None
 
     def __del__(self):
-        log.debug("Deleting EventSubscription object; calling unsubscribe.")
-        self.unsubscribe()
+        #log.debug("Deleting EventSubscription object; calling unsubscribe.")
+        #self.unsubscribe()
+        #TO DO: When trying to unsubscribe an error is thrown.
+        return
 
     @defer.inlineCallbacks
     def subscribe(self, path='Application', select='*'):
@@ -138,6 +140,15 @@ class EventSubscription(object):
         resp_elem = yield self._sender.send_request(
             'subscribe', event_query=event_query)
         defer.returnValue(resp_elem)
+
+    @defer.inlineCallbacks
+    def pull_once(self, process_event_func):
+        if self._subscription_id is None:
+            raise Exception('You must subscribe first.')
+        resp_elem = yield self._send_pull(self._enumeration_context)
+        self._enumeration_context = _find_enumeration_context(resp_elem)
+        for event in _find_events(resp_elem):
+            process_event_func(event)
 
     @defer.inlineCallbacks
     def pull(self, process_event_func):
