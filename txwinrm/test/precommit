@@ -22,10 +22,10 @@ echo
 
 (
     set -x
-    txwinrm/test/cover --fail-under=60
+    txwinrm/test/cover --fail-under=50
 ) || (
     echo
-    echo "ERROR: Less than 60% unit test coverage"
+    echo "ERROR: Less than 50% unit test coverage"
     exit 1
 ) || exit 1
 
