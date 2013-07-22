@@ -450,6 +450,13 @@ class EtreeRequestSender(object):
         proto = _StringProtocol()
         resp.deliverBody(proto)
         xml_str = yield proto.d
+        if log.isEnabledFor(logging.DEBUG):
+            try:
+                import xml.dom.minidom
+                xml = xml.dom.minidom.parseString(xml_str)
+                log.debug(xml.toprettyxml())
+            except:
+                log.debug('Could not prettify response XML: "{0}"'.format(xml_str))
         defer.returnValue(ET.fromstring(xml_str))
 
 
