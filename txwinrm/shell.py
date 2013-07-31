@@ -247,16 +247,24 @@ def create_long_subscription(conn_info, command_line):
 @defer.inlineCallbacks
 def retrieve_long_subscription(sender, shell_id, command_id):
 
-    receive_elem = yield sender.send_request(
+    stdout_parts = []
+    stderr_parts = []
+    exit_code = None
+
+    for i in xrange(3):
+        receive_elem = yield sender.send_request(
             'receive',
             shell_id=shell_id,
             command_id=command_id)
+        stdout_parts.extend(
+            _find_stream(receive_elem, command_id, 'stdout'))
+        stderr_parts.extend(
+            _find_stream(receive_elem, command_id, 'stderr'))
+        exit_code = _find_exit_code(receive_elem, command_id)
 
-    stdout_parts = _find_stream(receive_elem, command_id, 'stdout')
-    stderr_parts = _find_stream(receive_elem, command_id, 'stderr')
-    exit_code = _find_exit_code(receive_elem, command_id)
     stdout = _stripped_lines(stdout_parts)
     stderr = _stripped_lines(stderr_parts)
+
     defer.returnValue(CommandResponse(stdout, stderr, exit_code))
 
 
