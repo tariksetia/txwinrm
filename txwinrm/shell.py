@@ -23,8 +23,6 @@ from .util import create_etree_request_sender, get_datetime
 log = logging.getLogger('zen.winrm')
 _MAX_REQUESTS_PER_COMMAND = 9999
 
-connections_dct = {}
-
 
 class CommandResponse(object):
 
@@ -226,32 +224,40 @@ def create_long_running_command(conn_info):
     return LongRunningCommand(sender)
 
 
+@defer.inlineCallbacks
 def create_long_subscription(conn_info, command_line):
-    try:
-        sender = connections_dct[conn_info]['sender']
-        shell_id = connections_dct[conn_info]['shell_id']
-        command_id = connections_dct[conn_info]['command_id']
+    results = {}
 
-    except:
-        sender = create_etree_request_sender(conn_info)
-        elem = yield sender.send_request('create')
-        shell_id = _find_shell_id(elem)
-        command_id = _find_command_id(elem)
-        connections_dct[conn_info] = {'sender': sender,
-            'shell_id': shell_id,
-            'command_id': command_id}
-
+    sender = create_etree_request_sender(conn_info)
+    elem = yield sender.send_request('create')
+    shell_id = _find_shell_id(elem)
     command_line_elem = _build_command_line_elem(command_line)
-
     command_elem = yield sender.send_request(
-            'command', shell_id=shell_id,
-            command_line_elem=command_line_elem)
+        'command', shell_id=shell_id,
+        command_line_elem=command_line_elem)
+    command_id = _find_command_id(command_elem)
 
-    stdout_parts = _find_stream(command_elem, command_id, 'stdout')
-    stderr_parts = _find_stream(command_elem, command_id, 'stderr')
+    results['sender'] = sender
+    results['shell_id'] = shell_id
+    results['command_id'] = command_id
+
+    defer.returnValue(results)
+
+
+@defer.inlineCallbacks
+def retrieve_long_subscription(sender, shell_id, command_id):
+
+    receive_elem = yield sender.send_request(
+            'receive',
+            shell_id=shell_id,
+            command_id=command_id)
+
+    stdout_parts = _find_stream(receive_elem, command_id, 'stdout')
+    stderr_parts = _find_stream(receive_elem, command_id, 'stderr')
+    exit_code = _find_exit_code(receive_elem, command_id)
     stdout = _stripped_lines(stdout_parts)
     stderr = _stripped_lines(stderr_parts)
-    defer.returnValue((stdout, stderr))
+    defer.returnValue(CommandResponse(stdout, stderr, exit_code))
 
 
 class Typeperf(object):
