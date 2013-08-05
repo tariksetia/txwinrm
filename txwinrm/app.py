@@ -183,8 +183,15 @@ def _parse_config_file(filename, utility):
     for remote, cred_key in parser.items('remotes'):
         auth_type, username, password = creds[cred_key]
         hostname, scheme, port = _parse_remote(remote)
+        connectiontype = 'Keep-Alive'
         conn_info = ConnectionInfo(
-            hostname, auth_type, username, password, scheme, port)
+            hostname,
+            auth_type,
+            username,
+            password,
+            scheme,
+            port,
+            connectiontype)
         try:
             verify_conn_info(conn_info)
         except Exception as e:

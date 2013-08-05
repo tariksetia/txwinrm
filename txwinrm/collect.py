@@ -56,8 +56,9 @@ if __name__ == '__main__':
 
     @defer.inlineCallbacks
     def do_example_collect():
+        connectiontype = 'Keep-Alive'
         conn_info = ConnectionInfo(
-            "gilroy", "basic", "Administrator", getpass(), "http", 5985)
+            "gilroy", "basic", "Administrator", getpass(), "http", 5985, connectiontype)
         wql1 = create_enum_info(
             'Select Caption, DeviceID, Name From Win32_Processor')
         wql2 = create_enum_info(
