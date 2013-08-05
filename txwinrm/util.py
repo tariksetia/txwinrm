@@ -320,6 +320,7 @@ def _authenticate_with_kerberos(conn_info, url):
 def _get_url_and_headers(conn_info):
     url = "{c.scheme}://{c.hostname}:{c.port}/wsman".format(c=conn_info)
     headers = Headers(_CONTENT_TYPE)
+    headers.addRawHeader('Connection', conn_info.connectiontype)
     if conn_info.auth_type == 'basic':
         headers.addRawHeader(
             'Authorization', _get_basic_auth_header(conn_info))
@@ -332,7 +333,7 @@ def _get_url_and_headers(conn_info):
 
 ConnectionInfo = namedtuple(
     'ConnectionInfo',
-    ['hostname', 'auth_type', 'username', 'password', 'scheme', 'port'])
+    ['hostname', 'auth_type', 'username', 'password', 'scheme', 'port', 'connectiontype'])
 
 
 def verify_hostname(conn_info):
@@ -374,6 +375,12 @@ def verify_port(conn_info):
         raise Exception("illegal value for port: {0}".format(port))
 
 
+def verify_connectiontype(conn_info):
+    has_connectiontype, connectiontype = _has_get_attr(conn_info, 'connectiontype')
+    if not has_connectiontype or not connectiontype:
+        raise Exception("connectiontype missing")
+
+
 def verify_conn_info(conn_info):
     verify_hostname(conn_info)
     verify_auth_type(conn_info)
@@ -381,6 +388,7 @@ def verify_conn_info(conn_info):
     verify_password(conn_info)
     verify_scheme(conn_info)
     verify_port(conn_info)
+    verify_connectiontype(conn_info)
 
 
 class RequestSender(object):
