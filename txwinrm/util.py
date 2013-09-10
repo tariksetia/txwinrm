@@ -12,6 +12,7 @@ import re
 import base64
 import logging
 import httplib
+import types
 
 from subprocess import Popen, PIPE
 
@@ -188,16 +189,58 @@ def _get_kerberos_auth_header(conn_info):
     # base64 encode it
     return
 
+userkeylist = {}
+USER_FILE_NAME_PATTERN = re.compile(r'(.*@.*)FILE:(.*)')
 
-def kinit(keytab, username='rbooth@SOLUTIONS.LOC'):
 
+def get_kerberos_token(username, keytab):
+    # This method is used to fill userlist dict
+
+    # Get list of current key cache
+    klist = '/usr/bin/klist'
+    klistargs = [klist, '-l']
+    klist = Popen(klistargs, stdout=PIPE)
+
+    stdout, stderr = klist.communicate()
+    arrline = stdout.split('\n')
+
+    # Parse the returned data into dict
+    for newline in arrline:
+        parseline = USER_FILE_NAME_PATTERN.search(newline)
+        if type(parseline) != types.NoneType:
+            userkeylist[parseline.groups()[0].strip()] = parseline.groups()[1]
+
+    # Check to see if username exists
+    try:
+        tokenfile = userkeylist[username]
+
+        if tokenfile[-9:].lower() == '(expired)':
+            kinit(keytab=keytab, username=username)
+            return get_kerberos_token(username, keytab)
+        else:
+            return get_token(tokenfile)
+
+    except:
+        kinit(keytab=keytab, username=username)
+        return get_kerberos_token(username, keytab)
+
+
+def get_token(tokenfile):
+    certfile = open(tokenfile, 'r')
+    cert = certfile.read()
+    token = base64.b64encode(cert)
+    return token
+
+
+def kinit(keytab, username):
     kinit = '/usr/bin/kinit'
     args = [kinit, username, '-k', '-t', keytab]
+    Popen(args, stdout=PIPE)
+    return
 
-    keycreate = Popen(args, stdout=PIPE)
-    import pdb; pdb.set_trace()
-    return keycreate
+token = get_kerberos_token(username='rbooth@SOLUTIONS.LOC', keytab='/home/zenoss/rbooth.keytab')
 
+import pdb; pdb.set_trace()
 
 @defer.inlineCallbacks
 def _authenticate_with_kerberos(conn_info, url):
