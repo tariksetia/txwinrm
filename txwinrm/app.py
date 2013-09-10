@@ -184,6 +184,7 @@ def _parse_config_file(filename, utility):
         auth_type, username, password = creds[cred_key]
         hostname, scheme, port = _parse_remote(remote)
         connectiontype = 'Keep-Alive'
+        keytab = ''
         conn_info = ConnectionInfo(
             hostname,
             auth_type,
@@ -191,7 +192,8 @@ def _parse_config_file(filename, utility):
             password,
             scheme,
             port,
-            connectiontype)
+            connectiontype,
+            keytab,)
         try:
             verify_conn_info(conn_info)
         except Exception as e:

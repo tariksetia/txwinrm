@@ -163,32 +163,6 @@ def _get_basic_auth_header(conn_info):
     return 'Basic {0}'.format(base64.encodestring(authstr).strip())
 
 
-def _get_kerberos_auth_header(conn_info):
-
-    # Verify domain is in krb5.config file
-
-    # Check to see if valid key exists for user
-    # klist -l
-    # example
-    #Principal name                 Cache name
-    #--------------                 ----------
-    #rbooth@SOLUTIONS.LOC           FILE:/tmp/krb5cc_0 (Expired)
-
-    # If no key exists
-    # kinit -V rbooth@SOLUTIONS.LOC -k -t /x/kerberos/rbooth.keytab
-
-    # Using default cache: /tmp/krb5cc_1337
-    # Using principal: rbooth@SOLUTIONS.LOC
-    # Using keytab: /x/kerberos/rbooth.keytab
-    # Authenticated to Kerberos v5
-
-    # get path to key
-
-    # get key
-
-    # base64 encode it
-    return
-
 userkeylist = {}
 USER_FILE_NAME_PATTERN = re.compile(r'(.*@.*)FILE:(.*)')
 
@@ -228,7 +202,7 @@ def get_kerberos_token(username, keytab):
 def get_token(tokenfile):
     certfile = open(tokenfile, 'r')
     cert = certfile.read()
-    token = base64.b64encode(cert)
+    token = 'Kerberos {0}'.format(base64.b64encode(cert))
     return token
 
 
@@ -238,9 +212,7 @@ def kinit(keytab, username):
     Popen(args, stdout=PIPE)
     return
 
-token = get_kerberos_token(username='rbooth@SOLUTIONS.LOC', keytab='/home/zenoss/rbooth.keytab')
-
-import pdb; pdb.set_trace()
+#token = get_kerberos_token(username='rbooth@SOLUTIONS.LOC', keytab='/home/zenoss/rbooth.keytab')
 
 @defer.inlineCallbacks
 def _authenticate_with_kerberos(conn_info, url):
@@ -292,7 +264,10 @@ def _get_url_and_headers(conn_info):
             'Authorization', _get_basic_auth_header(conn_info))
     elif conn_info.auth_type == 'kerberos':
         headers.addRawHeader(
-            'Authorization', _get_kerberos_auth_header(conn_info))
+            'Authorization', get_kerberos_token(
+                keytab=conn_info.keytab,
+                username=conn_info.username
+                ))
 
         #yield _authenticate_with_kerberos(conn_info, url)
     else:
@@ -302,7 +277,15 @@ def _get_url_and_headers(conn_info):
 
 ConnectionInfo = namedtuple(
     'ConnectionInfo',
-    ['hostname', 'auth_type', 'username', 'password', 'scheme', 'port', 'connectiontype'])
+        ['hostname',
+        'auth_type',
+        'username',
+        'password',
+        'scheme',
+        'port',
+        'connectiontype',
+        'keytab',
+        ])
 
 
 def verify_hostname(conn_info):
