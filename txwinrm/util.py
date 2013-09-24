@@ -12,10 +12,6 @@ import re
 import base64
 import logging
 import httplib
-import types
-
-from subprocess import Popen, PIPE
-
 from datetime import datetime
 from collections import namedtuple
 from xml.etree import cElementTree as ET
@@ -163,56 +159,125 @@ def _get_basic_auth_header(conn_info):
     return 'Basic {0}'.format(base64.encodestring(authstr).strip())
 
 
-userkeylist = {}
-USER_FILE_NAME_PATTERN = re.compile(r'(.*@.*)FILE:(.*)')
+class KinitProcessProtocol(ProcessProtocol):
+
+    def __init__(self, password):
+        self._password = password
+        self.d = defer.Deferred()
+        self._data = ''
+
+    def outReceived(self, data):
+        log.debug("kinit wrote to stdout: {0}".format(data))
+        self._data += data
+        if 'Password for' in self._data and ':' in self._data:
+            log.debug("sending password")
+            self.transport.write('{0}\n'.format(self._password))
+            self._data = ''
+
+    def errReceived(self, data):
+        log.debug("kinit wrote to stdin: {0}".format(data))
+
+    def processExited(self, reason):
+        if reason.value.exitCode != 0:
+            log.debug("kinit failed (exit code {0}): {1} {2}".format(
+                reason.value.exitCode,
+                reason,
+                reason.value))
+
+    def processEnded(self, reason):
+        self.d.callback(None)
 
 
-def get_kerberos_token(username, keytab):
-    # This method is used to fill userlist dict
-
-    # Get list of current key cache
-    klist = '/usr/bin/klist'
-    klistargs = [klist, '-l']
-    klist = Popen(klistargs, stdout=PIPE)
-
-    stdout, stderr = klist.communicate()
-    arrline = stdout.split('\n')
-
-    # Parse the returned data into dict
-    for newline in arrline:
-        parseline = USER_FILE_NAME_PATTERN.search(newline)
-        if type(parseline) != types.NoneType:
-            userkeylist[parseline.groups()[0].strip()] = parseline.groups()[1]
-
-    # Check to see if username exists
-    try:
-        tokenfile = userkeylist[username]
-
-        if tokenfile[-9:].lower() == '(expired)':
-            kinit(keytab=keytab, username=username)
-            return get_kerberos_token(username, keytab)
-        else:
-            return get_token(tokenfile)
-
-    except:
-        kinit(keytab=keytab, username=username)
-        return get_kerberos_token(username, keytab)
-
-
-def get_token(tokenfile):
-    certfile = open(tokenfile, 'r')
-    cert = certfile.read()
-    token = 'Kerberos {0}'.format(base64.b64encode(cert))
-    return token
-
-
-def kinit(keytab, username):
+@defer.inlineCallbacks
+def kinit(username, password):
     kinit = '/usr/bin/kinit'
-    args = [kinit, username, '-k', '-t', keytab]
-    Popen(args, stdout=PIPE)
-    return
+    userid, realm = username.split('@')
+    args = [kinit, '{0}@{1}'.format(userid, realm.upper())]
+    log.debug('spawing kinit process: {0}'.format(args))
+    protocol = KinitProcessProtocol(password)
+    reactor.spawnProcess(protocol, kinit, args)
+    yield protocol.d
 
-#token = get_kerberos_token(username='rbooth@SOLUTIONS.LOC', keytab='/home/zenoss/rbooth.keytab')
+
+class AuthGSSClient(object):
+    """
+    The Generic Security Services (GSS) API allows Kerberos implementations to
+    be API compatible. Instances of this class operate on a context for GSSAPI
+    client-side authentication with the given service principal.
+
+    GSSAPI Function Result Codes:
+        -1 : Error
+        0  : GSSAPI step continuation (only returned by 'Step' function)
+        1  : GSSAPI step complete, or function return OK
+    """
+
+    def __init__(self, service, username, password):
+        """
+        @param service: a string containing the service principal in the form
+            'type@fqdn' (e.g. 'imap@mail.apple.com').
+        """
+        self._service = service
+        self._username = username
+        self._password = password
+        result_code, self._context = kerberos.authGSSClientInit(service)
+        if result_code != kerberos.AUTH_GSS_COMPLETE:
+            raise Exception('kerberos authGSSClientInit failed')
+
+    def __del__(self):
+        result_code = kerberos.authGSSClientClean(self._context)
+        if result_code != kerberos.AUTH_GSS_COMPLETE:
+            raise Exception('kerberos authGSSClientClean failed')
+
+    def _step(self, challenge=''):
+        """
+        Processes a single GSSAPI client-side step using the supplied server
+        data.
+
+        @param challenge: a string containing the base64-encoded server data
+            (which may be empty for the first step).
+        @return:          a result code
+        """
+        log.debug('GSSAPI step challenge="{0}"'.format(challenge))
+        return kerberos.authGSSClientStep(self._context, challenge)
+
+    @defer.inlineCallbacks
+    def get_base64_client_data(self):
+        """
+        @return: a string containing the base64-encoded client data to be sent
+            to the server.
+        """
+        result_code = None
+        for i in xrange(_MAX_KERBEROS_RETRIES):
+            try:
+                result_code = self._step()
+                break
+            except kerberos.GSSError as e:
+                msg = e.args[1][0]
+                if msg == 'Cannot determine realm for numeric host address':
+                    raise
+                log.debug('{0}. Calling kinit.'.format(msg))
+                yield kinit(self._username, self._password)
+        if result_code != kerberos.AUTH_GSS_CONTINUE:
+            raise Exception('kerberos authGSSClientStep failed ({0}).'
+                            .format(result_code))
+        base64_client_data = kerberos.authGSSClientResponse(self._context)
+        defer.returnValue(base64_client_data)
+
+    def get_username(self, challenge):
+        """
+        Get the user name of the principal authenticated via the now complete
+        GSSAPI client-side operations.
+
+        @param challenge: a string containing the base64-encoded server data
+        @return:          a string containing the user name.
+        """
+        result_code = self._step(challenge)
+        if result_code != kerberos.AUTH_GSS_COMPLETE:
+            raise Exception('kerberos authGSSClientStep failed ({0}). '
+                            'challenge={1}'
+                            .format(result_code, challenge))
+        return kerberos.authGSSClientUserName(self._context)
+
 
 @defer.inlineCallbacks
 def _authenticate_with_kerberos(conn_info, url):
@@ -221,10 +286,7 @@ def _authenticate_with_kerberos(conn_info, url):
     service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
     gss_client = AuthGSSClient(service, conn_info.username, conn_info.password)
     base64_client_data = yield gss_client.get_base64_client_data()
-
-    #get certifcate from temp file and cast to base64 format
     auth = 'Kerberos {0}'.format(base64_client_data)
-
     k_headers = Headers(_CONTENT_TYPE)
     k_headers.addRawHeader('Authorization', auth)
     k_headers.addRawHeader('Content-Length', '0')
@@ -263,13 +325,7 @@ def _get_url_and_headers(conn_info):
         headers.addRawHeader(
             'Authorization', _get_basic_auth_header(conn_info))
     elif conn_info.auth_type == 'kerberos':
-        headers.addRawHeader(
-            'Authorization', get_kerberos_token(
-                keytab=conn_info.keytab,
-                username=conn_info.username
-                ))
-
-        #yield _authenticate_with_kerberos(conn_info, url)
+        yield _authenticate_with_kerberos(conn_info, url)
     else:
         raise Exception('unknown auth type: {0}'.format(conn_info.auth_type))
     defer.returnValue((url, headers))
@@ -277,15 +333,7 @@ def _get_url_and_headers(conn_info):
 
 ConnectionInfo = namedtuple(
     'ConnectionInfo',
-        ['hostname',
-        'auth_type',
-        'username',
-        'password',
-        'scheme',
-        'port',
-        'connectiontype',
-        'keytab',
-        ])
+    ['hostname', 'auth_type', 'username', 'password', 'scheme', 'port', 'connectiontype', 'keytab'])
 
 
 def verify_hostname(conn_info):
@@ -363,21 +411,15 @@ class RequestSender(object):
     def send_request(self, request_template_name, **kwargs):
         log.debug('sending request: {0} {1}'.format(
             request_template_name, kwargs))
-
         if not self._url or self._conn_info.auth_type == 'kerberos':
             yield self._set_url_and_headers()
-
         request = _get_request_template(request_template_name).format(**kwargs)
-
         # log.debug(request)
         body_producer = _StringProducer(request)
-
         response = yield _get_agent().request(
             'POST', self._url, self._headers, body_producer)
-
         log.debug('received response {0} {1}'.format(
             response.code, request_template_name))
-
         if response.code == httplib.UNAUTHORIZED:
             raise UnauthorizedError(
                 "unauthorized, check username and password.")
