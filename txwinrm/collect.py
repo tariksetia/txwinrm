@@ -57,8 +57,11 @@ if __name__ == '__main__':
     @defer.inlineCallbacks
     def do_example_collect():
         connectiontype = 'Keep-Alive'
+        """conn_info = ConnectionInfo(
+            "gilroy", "basic", "Administrator", getpass(), "http", 5985, connectiontype, '')
+        """
         conn_info = ConnectionInfo(
-            "gilroy", "basic", "Administrator", getpass(), "http", 5985, connectiontype)
+            "10.30.50.34", "kerberos", "rbooth@SOLUTIONS.LOC", "", "http", 5985, connectiontype, "/home/zenoss/rbooth.keytab")
         wql1 = create_enum_info(
             'Select Caption, DeviceID, Name From Win32_Processor')
         wql2 = create_enum_info(

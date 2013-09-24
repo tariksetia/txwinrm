@@ -333,7 +333,7 @@ def _get_url_and_headers(conn_info):
 
 ConnectionInfo = namedtuple(
     'ConnectionInfo',
-    ['hostname', 'auth_type', 'username', 'password', 'scheme', 'port', 'connectiontype'])
+    ['hostname', 'auth_type', 'username', 'password', 'scheme', 'port', 'connectiontype', 'keytab'])
 
 
 def verify_hostname(conn_info):
