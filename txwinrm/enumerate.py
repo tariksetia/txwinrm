@@ -93,7 +93,7 @@ class WinrmClient(object):
                 log.error('{0} {1}'.format(self._hostname, reason.value))
             raise
         except RequestError as e:
-            log.debug('{0} {1}'.format(self._hostname, e))
+            log.error('{0} {1}'.format(self._hostname, e))
             raise
         except Exception as e:
             log.error('{0} {1}'.format(self._hostname, e))
