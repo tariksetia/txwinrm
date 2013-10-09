@@ -7,6 +7,8 @@
 #
 ##############################################################################
 
+import logging
+
 from collections import namedtuple
 from twisted.internet import defer
 from .enumerate import create_winrm_client, DEFAULT_RESOURCE_URI
@@ -14,6 +16,7 @@ from .util import ConnectionInfo, RequestError
 
 
 EnumInfo = namedtuple('EnumInfo', ['wql', 'resource_uri'])
+log = logging.getLogger('zen.winrm')
 
 
 def create_enum_info(wql, resource_uri=DEFAULT_RESOURCE_URI):
@@ -39,8 +42,12 @@ class WinrmCollectClient(object):
             try:
                 items[enum_info] = yield client.enumerate(
                     enum_info.wql, enum_info.resource_uri)
-            except RequestError:
-                continue
+            except RequestError as e:
+                if 'unauthorized' in e[0]:
+                    log.error(e[0])
+                    defer.returnValue(e[0])
+                else:
+                    continue
         defer.returnValue(items)
 
 
