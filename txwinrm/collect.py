@@ -7,6 +7,7 @@
 #
 ##############################################################################
 
+
 from collections import namedtuple
 from twisted.internet import defer
 from .enumerate import create_winrm_client, DEFAULT_RESOURCE_URI
@@ -39,8 +40,11 @@ class WinrmCollectClient(object):
             try:
                 items[enum_info] = yield client.enumerate(
                     enum_info.wql, enum_info.resource_uri)
-            except RequestError:
-                continue
+            except RequestError as e:
+                if 'unauthorized' in e[0]:
+                    raise
+                else:
+                    continue
         defer.returnValue(items)
 
 
