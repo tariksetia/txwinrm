@@ -317,6 +317,15 @@ def _authenticate_with_kerberos(conn_info, url):
 
 
 @defer.inlineCallbacks
+def _kerberos_auth_key(conn_info, url):
+    service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
+    gss_client = AuthGSSClient(service, conn_info.username, conn_info.password)
+    base64_client_data = yield gss_client.get_base64_client_data()
+    auth = 'Kerberos {0}'.format(base64_client_data)
+    defer.returnValue(auth)
+
+
+@defer.inlineCallbacks
 def _get_url_and_headers(conn_info):
     url = "{c.scheme}://{c.hostname}:{c.port}/wsman".format(c=conn_info)
     headers = Headers(_CONTENT_TYPE)
@@ -326,6 +335,8 @@ def _get_url_and_headers(conn_info):
             'Authorization', _get_basic_auth_header(conn_info))
     elif conn_info.auth_type == 'kerberos':
         yield _authenticate_with_kerberos(conn_info, url)
+        kerbkey = yield _kerberos_auth_key(conn_info, url)
+        headers.addRawHeader('Authorization', kerbkey)
     else:
         raise Exception('unknown auth type: {0}'.format(conn_info.auth_type))
     defer.returnValue((url, headers))
