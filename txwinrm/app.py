@@ -185,6 +185,7 @@ def _parse_config_file(filename, utility):
         hostname, scheme, port = _parse_remote(remote)
         connectiontype = 'Keep-Alive'
         keytab = ''
+        dcip = ''
         conn_info = ConnectionInfo(
             hostname,
             auth_type,
@@ -193,7 +194,8 @@ def _parse_config_file(filename, utility):
             scheme,
             port,
             connectiontype,
-            keytab,)
+            keytab,
+            dcip,)
         try:
             verify_conn_info(conn_info)
         except Exception as e:
@@ -213,6 +215,8 @@ def _parse_args(utility):
     parser.add_argument("--authentication", "-a", default='basic',
                         choices=['basic', 'kerberos'])
     parser.add_argument("--username", "-u")
+    parser.add_argument("--dcip", "-i")
+    parser.add_argument("--keytab", "-k")
     utility.add_args(parser)
     args = parser.parse_args()
     if not args.config:
@@ -228,7 +232,7 @@ def _parse_args(utility):
             connectiontype = 'Keep-Alive'
             args.conn_info = ConnectionInfo(
                 hostname, args.authentication, args.username, password, scheme,
-                port, connectiontype)
+                port, connectiontype, args.keytab, args.dcip)
             try:
                 verify_conn_info(args.conn_info)
             except Exception as e:

@@ -47,6 +47,38 @@ _CONTENT_TYPE = {'Content-Type': ['application/soap+xml;charset=UTF-8']}
 _MAX_KERBEROS_RETRIES = 3
 _MARKER = object()
 
+_KRBCONFIG = "krb5/domains"
+
+KRB5TEMPLATE = """
+[logging]
+ default = FILE:/var/log/krb5libs.log
+ kdc = FILE:/var/log/krb5kdc.log
+ admin_server = FILE:/var/log/kadmind.log
+
+[libdefaults]
+ default_realm = EXAMPLE.COM
+ dns_lookup_realm = false
+ dns_lookup_kdc = false
+ ticket_lifetime = 24h
+ renew_lifetime = 7d
+ forwardable = true
+
+includedir {domainsdir}
+"""
+
+
+TEMPLATE = """
+[realms]
+ {realm} = {{
+  kdc = {domain_controller_ip}
+  admin_server = {domain_controller_ip}
+ }}
+
+[domain_realm]
+ .{domain} = {realm}
+ {domain} = {realm}
+"""
+
 
 def _has_get_attr(obj, attr_name):
     attr_value = getattr(obj, attr_name, _MARKER)
@@ -161,8 +193,10 @@ def _get_basic_auth_header(conn_info):
 
 class KinitProcessProtocol(ProcessProtocol):
 
-    def __init__(self, password):
+    def __init__(self, realm, password, dcip):
         self._password = password
+        self._realm = realm
+        self._dcip = dcip
         self.d = defer.Deferred()
         self._data = ''
 
@@ -175,6 +209,23 @@ class KinitProcessProtocol(ProcessProtocol):
             self._data = ''
 
     def errReceived(self, data):
+        if 'resolve server' in data:
+            log.debug("kinit attempt to configure domain files")
+            domainfile = "{0}/krb5/domains/{1}".format(
+                os.environ['ZENHOME'],
+                self._realm.replace(".", "_")
+                )
+            log.debug("kinit domain file {0}".format(domainfile))
+            if not os.path.isfile(domainfile):
+                f = open(domainfile, 'w')
+                f.write(TEMPLATE.format(
+                    realm=self._realm.upper(),
+                    domain_controller_ip=self._dcip,
+                    domain=self._realm.lower()
+                    ))
+            else:
+                log.debug("Domain config file already exists")
+
         log.debug("kinit wrote to stdin: {0}".format(data))
 
     def processExited(self, reason):
@@ -189,13 +240,16 @@ class KinitProcessProtocol(ProcessProtocol):
 
 
 @defer.inlineCallbacks
-def kinit(username, password):
+def kinit(username, password, dcip):
     kinit = '/usr/bin/kinit'
     userid, realm = username.split('@')
     args = [kinit, '{0}@{1}'.format(userid, realm.upper())]
+    env = {'ZENHOME': os.environ['ZENHOME'],
+        'HOME': os.environ['HOME'],
+        'KRB5_CONFIG': os.environ['KRB5_CONFIG']}
     log.debug('spawing kinit process: {0}'.format(args))
-    protocol = KinitProcessProtocol(password)
-    reactor.spawnProcess(protocol, kinit, args)
+    protocol = KinitProcessProtocol(realm, password, dcip)
+    reactor.spawnProcess(protocol, kinit, args, env)
     yield protocol.d
 
 
@@ -211,7 +265,7 @@ class AuthGSSClient(object):
         1  : GSSAPI step complete, or function return OK
     """
 
-    def __init__(self, service, username, password):
+    def __init__(self, service, username, password, dcip):
         """
         @param service: a string containing the service principal in the form
             'type@fqdn' (e.g. 'imap@mail.apple.com').
@@ -219,6 +273,7 @@ class AuthGSSClient(object):
         self._service = service
         self._username = username
         self._password = password
+        self._dcip = dcip
         result_code, self._context = kerberos.authGSSClientInit(service)
         if result_code != kerberos.AUTH_GSS_COMPLETE:
             raise Exception('kerberos authGSSClientInit failed')
@@ -241,7 +296,7 @@ class AuthGSSClient(object):
         return kerberos.authGSSClientStep(self._context, challenge)
 
     @defer.inlineCallbacks
-    def get_base64_client_data(self):
+    def get_base64_client_data(self, challenge=''):
         """
         @return: a string containing the base64-encoded client data to be sent
             to the server.
@@ -249,14 +304,14 @@ class AuthGSSClient(object):
         result_code = None
         for i in xrange(_MAX_KERBEROS_RETRIES):
             try:
-                result_code = self._step()
+                result_code = self._step(challenge)
                 break
             except kerberos.GSSError as e:
                 msg = e.args[1][0]
                 if msg == 'Cannot determine realm for numeric host address':
                     raise
                 log.debug('{0}. Calling kinit.'.format(msg))
-                yield kinit(self._username, self._password)
+                yield kinit(self._username, self._password, self._dcip)
         if result_code != kerberos.AUTH_GSS_CONTINUE:
             raise Exception('kerberos authGSSClientStep failed ({0}).'
                             .format(result_code))
@@ -283,8 +338,26 @@ class AuthGSSClient(object):
 def _authenticate_with_kerberos(conn_info, url):
     if not KERBEROS_INSTALLED:
         raise Exception('You must run "easy_install kerberos".')
+
+    krbdomainspath = '{0}/{1}'.format(os.environ['ZENHOME'],
+        _KRBCONFIG)
+    log.debug('KRB Domain Path: {0}'.format(krbdomainspath))
+    if not os.path.exists(krbdomainspath):
+        os.makedirs(krbdomainspath)
+        log.debug('KRB Make Dir')
+        krbconfigpath = krbdomainspath[:-8]
+        krbconfig = '{0}/krb5.conf'.format(krbconfigpath)
+        f = open(krbconfig, 'w')
+        f.write(KRB5TEMPLATE.format(
+            domainsdir=krbdomainspath,
+            ))
+        os.environ['KRB5_CONFIG'] = krbconfig
     service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
-    gss_client = AuthGSSClient(service, conn_info.username, conn_info.password)
+    gss_client = AuthGSSClient(service,
+        conn_info.username,
+        conn_info.password,
+        conn_info.dcip)
+
     base64_client_data = yield gss_client.get_base64_client_data()
     auth = 'Kerberos {0}'.format(base64_client_data)
     k_headers = Headers(_CONTENT_TYPE)
@@ -319,7 +392,10 @@ def _authenticate_with_kerberos(conn_info, url):
 @defer.inlineCallbacks
 def _kerberos_auth_key(conn_info, url):
     service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
-    gss_client = AuthGSSClient(service, conn_info.username, conn_info.password)
+    gss_client = AuthGSSClient(service,
+        conn_info.username,
+        conn_info.password,
+        conn_info.dcip)
     base64_client_data = yield gss_client.get_base64_client_data()
     auth = 'Kerberos {0}'.format(base64_client_data)
     defer.returnValue(auth)
@@ -344,7 +420,15 @@ def _get_url_and_headers(conn_info):
 
 ConnectionInfo = namedtuple(
     'ConnectionInfo',
-    ['hostname', 'auth_type', 'username', 'password', 'scheme', 'port', 'connectiontype', 'keytab'])
+        ['hostname',
+        'auth_type',
+        'username',
+        'password',
+        'scheme',
+        'port',
+        'connectiontype',
+        'keytab',
+        'dcip'])
 
 
 def verify_hostname(conn_info):
@@ -427,6 +511,7 @@ class RequestSender(object):
         request = _get_request_template(request_template_name).format(**kwargs)
         # log.debug(request)
         body_producer = _StringProducer(request)
+        #import pdb; pdb.set_trace()
         response = yield _get_agent().request(
             'POST', self._url, self._headers, body_producer)
         log.debug('received response {0} {1}'.format(
