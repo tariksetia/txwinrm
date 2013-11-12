@@ -209,22 +209,21 @@ class KinitProcessProtocol(ProcessProtocol):
             self._data = ''
 
     def errReceived(self, data):
-        if 'resolve server' in data:
-            log.debug("kinit attempt to configure domain files")
-            domainfile = "{0}/krb5/domains/{1}".format(
-                os.environ['ZENHOME'],
-                self._realm.replace(".", "_")
-                )
-            log.debug("kinit domain file {0}".format(domainfile))
-            if not os.path.isfile(domainfile):
-                f = open(domainfile, 'w')
-                f.write(TEMPLATE.format(
-                    realm=self._realm.upper(),
-                    domain_controller_ip=self._dcip,
-                    domain=self._realm.lower()
-                    ))
-            else:
-                log.debug("Domain config file already exists")
+
+        log.debug("kinit attempt to configure domain files")
+        domainfile = "{0}/krb5/domains/{1}".format(
+            os.environ['ZENHOME'],
+            self._realm.replace(".", "_")
+            )
+        log.debug("kinit domain file {0}".format(domainfile))
+        if not os.path.isfile(domainfile):
+            f = open(domainfile, 'w')
+            f.write(TEMPLATE.format(
+                realm=self._realm.upper(),
+                domain_controller_ip=self._dcip,
+                domain=self._realm.lower()
+                ))
+            f.close()
 
         log.debug("kinit wrote to stdin: {0}".format(data))
 
@@ -242,15 +241,18 @@ class KinitProcessProtocol(ProcessProtocol):
 @defer.inlineCallbacks
 def kinit(username, password, dcip):
     kinit = '/usr/bin/kinit'
-    userid, realm = username.split('@')
-    args = [kinit, '{0}@{1}'.format(userid, realm.upper())]
-    env = {'ZENHOME': os.environ['ZENHOME'],
-        'HOME': os.environ['HOME'],
-        'KRB5_CONFIG': os.environ['KRB5_CONFIG']}
-    log.debug('spawing kinit process: {0}'.format(args))
-    protocol = KinitProcessProtocol(realm, password, dcip)
-    reactor.spawnProcess(protocol, kinit, args, env)
-    yield protocol.d
+    if os.path.isfile(kinit):
+        userid, realm = username.split('@')
+        kinit_args = [kinit, '{0}@{1}'.format(userid, realm.upper())]
+        env = {'ZENHOME': os.environ['ZENHOME'],
+            'HOME': os.environ['HOME'],
+            'KRB5_CONFIG': os.environ['KRB5_CONFIG']}
+        log.debug('spawing kinit process: {0}'.format(kinit_args))
+        protocol = KinitProcessProtocol(realm, password, dcip)
+        reactor.spawnProcess(protocol, kinit, kinit_args, env)
+        yield protocol.d
+    else:
+        raise Exception('krb5-workstation must be installed')
 
 
 class AuthGSSClient(object):
