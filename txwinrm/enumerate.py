@@ -321,7 +321,7 @@ class TextBufferingContentHandler(sax.handler.ContentHandler):
 
         This implementation writes to the buffer.
         """
-        self._buffer.write(content.encode('utf8', 'ignore').strip())
+        self._buffer.write(content)
 
     def _reset_truncate(self):
         self._buffer.reset()
