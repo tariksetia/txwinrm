@@ -18,6 +18,7 @@ from .util import ConnectionInfo, RequestError
 EnumInfo = namedtuple('EnumInfo', ['wql', 'resource_uri'])
 log = logging.getLogger('zen.winrm')
 
+
 def create_enum_info(wql, resource_uri=DEFAULT_RESOURCE_URI):
     return EnumInfo(wql, resource_uri)
 
@@ -53,7 +54,6 @@ class WinrmCollectClient(object):
 
 if __name__ == '__main__':
     from pprint import pprint
-    from getpass import getpass
     import logging
     from twisted.internet import reactor
     logging.basicConfig()
@@ -62,9 +62,6 @@ if __name__ == '__main__':
     @defer.inlineCallbacks
     def do_example_collect():
         connectiontype = 'Keep-Alive'
-        """conn_info = ConnectionInfo(
-            "gilroy", "basic", "Administrator", getpass(), "http", 5985, connectiontype, '')
-        """
         conn_info = ConnectionInfo(
             "10.30.50.34", "kerberos", "rbooth@SOLUTIONS.LOC", "", "http", 5985, connectiontype, "/home/zenoss/rbooth.keytab", '')
         wql1 = create_enum_info(

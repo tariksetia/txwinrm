@@ -244,9 +244,12 @@ def kinit(username, password, dcip):
     if os.path.isfile(kinit):
         userid, realm = username.split('@')
         kinit_args = [kinit, '{0}@{1}'.format(userid, realm.upper())]
-        env = {'ZENHOME': os.environ['ZENHOME'],
+        env = {
+            'ZENHOME': os.environ['ZENHOME'],
             'HOME': os.environ['HOME'],
-            'KRB5_CONFIG': os.environ['KRB5_CONFIG']}
+            'KRB5_CONFIG': os.environ['KRB5_CONFIG'],
+            }
+
         log.debug('spawing kinit process: {0}'.format(kinit_args))
         protocol = KinitProcessProtocol(realm, password, dcip)
         reactor.spawnProcess(protocol, kinit, kinit_args, env)
@@ -341,8 +344,7 @@ def _authenticate_with_kerberos(conn_info, url):
     if not KERBEROS_INSTALLED:
         raise Exception('You must run "easy_install kerberos".')
 
-    krbdomainspath = '{0}/{1}'.format(os.environ['ZENHOME'],
-        _KRBCONFIG)
+    krbdomainspath = '{0}/{1}'.format(os.environ['ZENHOME'], _KRBCONFIG)
     log.debug('KRB Domain Path: {0}'.format(krbdomainspath))
     if not os.path.exists(krbdomainspath):
         os.makedirs(krbdomainspath)
@@ -355,7 +357,8 @@ def _authenticate_with_kerberos(conn_info, url):
             ))
         os.environ['KRB5_CONFIG'] = krbconfig
     service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
-    gss_client = AuthGSSClient(service,
+    gss_client = AuthGSSClient(
+        service,
         conn_info.username,
         conn_info.password,
         conn_info.dcip)
@@ -394,7 +397,8 @@ def _authenticate_with_kerberos(conn_info, url):
 @defer.inlineCallbacks
 def _kerberos_auth_key(conn_info, url):
     service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
-    gss_client = AuthGSSClient(service,
+    gss_client = AuthGSSClient(
+        service,
         conn_info.username,
         conn_info.password,
         conn_info.dcip)
@@ -421,8 +425,8 @@ def _get_url_and_headers(conn_info):
 
 
 ConnectionInfo = namedtuple(
-    'ConnectionInfo',
-        ['hostname',
+    'ConnectionInfo', [
+        'hostname',
         'auth_type',
         'username',
         'password',
