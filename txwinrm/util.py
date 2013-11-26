@@ -18,7 +18,7 @@ from xml.etree import cElementTree as ET
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol, ProcessProtocol
 from twisted.web.client import Agent
-from twisted.internet.ssl import CertificateOptions
+from twisted.internet.ssl import ClientContextFactory
 from twisted.web.http_headers import Headers
 from . import constants as c
 
@@ -90,7 +90,7 @@ def _has_get_attr(obj, attr_name):
 class MyWebClientContextFactory(object):
 
     def __init__(self):
-        self._options = CertificateOptions()
+        self._options = ClientContextFactory()
 
     def getContext(self, hostname, port):
         return self._options.getContext()
@@ -211,8 +211,13 @@ class KinitProcessProtocol(ProcessProtocol):
     def errReceived(self, data):
 
         log.debug("kinit attempt to configure domain files")
+        if os.environ['ZENHOME']:
+            krb5dir = os.environ['ZENHOME']
+        else:
+            krb5dir = os.environ['HOME']
+
         domainfile = "{0}/krb5/domains/{1}".format(
-            os.environ['ZENHOME'],
+            krb5dir,
             self._realm.replace(".", "_")
             )
         log.debug("kinit domain file {0}".format(domainfile))
@@ -247,12 +252,21 @@ def kinit(username, password, dcip):
         env = {'ZENHOME': os.environ['ZENHOME'],
             'HOME': os.environ['HOME'],
             'KRB5_CONFIG': os.environ['KRB5_CONFIG']}
-        log.debug('spawing kinit process: {0}'.format(kinit_args))
+        log.debug('spawning kinit process: {0}'.format(kinit_args))
         protocol = KinitProcessProtocol(realm, password, dcip)
         reactor.spawnProcess(protocol, kinit, kinit_args, env)
         yield protocol.d
     else:
         raise Exception('krb5-workstation must be installed')
+
+
+def setkrbenv():
+    if 'KRB5_CONFIG' not in open('~/.bashrc').read():
+        with open("~/.bashrc", "a") as outfile:
+            if os.environ['ZENHOME']:
+                outfile.write('export KRB5_CONFIG="${ZENHOME}/krb5/krb5.conf"')
+            else:
+                outfile.write('export KRB5_CONFIG="${HOME}/krb5/krb5.conf"')
 
 
 class AuthGSSClient(object):
@@ -353,7 +367,7 @@ def _authenticate_with_kerberos(conn_info, url):
         f.write(KRB5TEMPLATE.format(
             domainsdir=krbdomainspath,
             ))
-        os.environ['KRB5_CONFIG'] = krbconfig
+        setkrbenv()
     service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
     gss_client = AuthGSSClient(service,
         conn_info.username,
@@ -460,9 +474,9 @@ def verify_password(conn_info):
 
 def verify_scheme(conn_info):
     has_scheme, scheme = _has_get_attr(conn_info, 'scheme')
-    if not has_scheme or scheme != 'http':
+    if not has_scheme or scheme not in ['http', 'https']:
         raise Exception(
-            "scheme must be http (https is not implemented yet): {0}"
+            "scheme must be http or https: {0}"
             .format(scheme))
 
 
