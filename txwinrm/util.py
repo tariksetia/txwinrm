@@ -171,6 +171,10 @@ class RequestError(Exception):
     pass
 
 
+class ForbiddenError(RequestError):
+    pass
+
+
 class UnauthorizedError(RequestError):
     pass
 
@@ -372,6 +376,9 @@ def _authenticate_with_kerberos(conn_info, url):
     if response.code == httplib.UNAUTHORIZED:
         raise UnauthorizedError(
             "HTTP Unauthorized received on initial kerberos request.")
+    elif response.code == httplib.FORBIDDEN:
+        raise ForbiddenError(
+            "Forbidden. Check WinRM port and version.")
     elif response.code != httplib.OK:
         proto = _StringProtocol()
         response.deliverBody(proto)
@@ -522,9 +529,12 @@ class RequestSender(object):
             'POST', self._url, self._headers, body_producer)
         log.debug('received response {0} {1}'.format(
             response.code, request_template_name))
-        if response.code == httplib.UNAUTHORIZED:
+        if response.code == httplib.FORBIDDEN:
+            raise ForbiddenError(
+                "Forbidden: Check WinRM port and version")
+        elif response.code == httplib.UNAUTHORIZED:
             raise UnauthorizedError(
-                "unauthorized, check username and password.")
+                "Unauthorized: Check username and password")
         elif response.code != httplib.OK:
             reader = _ErrorReader()
             response.deliverBody(reader)
