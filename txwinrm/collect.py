@@ -12,7 +12,12 @@ import logging
 from collections import namedtuple
 from twisted.internet import defer
 from .enumerate import create_winrm_client, DEFAULT_RESOURCE_URI
-from .util import ConnectionInfo, RequestError
+from .util import (
+    ConnectionInfo,
+    ForbiddenError,
+    RequestError,
+    UnauthorizedError,
+    )
 
 
 EnumInfo = namedtuple('EnumInfo', ['wql', 'resource_uri'])
@@ -42,11 +47,13 @@ class WinrmCollectClient(object):
             try:
                 items[enum_info] = yield client.enumerate(
                     enum_info.wql, enum_info.resource_uri)
-            except RequestError as e:
-                if 'unauthorized' in e[0]:
-                    raise
-                else:
-                    continue
+            except (UnauthorizedError, ForbiddenError):
+                # Fail the collection for general errors.
+                raise
+            except RequestError:
+                # Store empty results for other query-specific errors.
+                continue
+
         defer.returnValue(items)
 
 
