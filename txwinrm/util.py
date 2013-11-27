@@ -214,7 +214,17 @@ class KinitProcessProtocol(ProcessProtocol):
 
     def outReceived(self, data):
         log.debug("kinit wrote to stdout: {0}".format(data))
-        createDomainFile(self._realm, self._dcip)
+        domainfile = "{0}/{1}domains/{2}".format(
+            getKrbConfigLocation(),
+            _KRBCONFIG,
+            self._realm.replace(".", "_").upper()
+            )
+        if os.path.isfile(domainfile):
+            if self._dcip not in open(domainfile).read():
+                os.remove(domainfile)
+
+        createDomainFile(self._realm, self._dcip, domainfile)
+
         self._data += data
         if 'Password for' in self._data and ':' in self._data:
             log.debug("sending password")
@@ -223,7 +233,16 @@ class KinitProcessProtocol(ProcessProtocol):
 
     def errReceived(self, data):
         log.debug("kinit attempt to configure domain files")
-        domainfile = createDomainFile(self._realm, self._dcip)
+        domainfile = "{0}/{1}domains/{2}".format(
+            getKrbConfigLocation(),
+            _KRBCONFIG,
+            self._realm.replace(".", "_").upper()
+            )
+        if os.path.isfile(domainfile):
+            if self._dcip not in open(domainfile).read():
+                os.remove(domainfile)
+
+        domainfile = createDomainFile(self._realm, self._dcip, domainfile)
         log.debug("kinit domain file {0}".format(domainfile))
         log.debug("kinit wrote to stdin: {0}".format(data))
 
@@ -238,26 +257,15 @@ class KinitProcessProtocol(ProcessProtocol):
         self.d.callback(None)
 
 
-def createDomainFile(realm, dcip):
-    domainfile = "{0}/{1}domains/{2}".format(
-        getKrbConfigLocation(),
-        _KRBCONFIG,
-        realm.replace(".", "_").upper()
-        )
-
-    if len(realm) > 0 and len(dcip) > 0:
-        if not os.path.isfile(domainfile):
-            f = open(domainfile, 'w')
-            f.write(TEMPLATE.format(
-                realm=realm.upper(),
-                domain_controller_ip=dcip,
-                domain=realm.lower()
-                ))
-            f.close()
-        return domainfile
-    else:
-        log.info("Configuration for Realm or KRB IP is missing")
-        return
+def createDomainFile(realm, dcip, domainfile):
+    if not os.path.isfile(domainfile):
+        f = open(domainfile, 'w')
+        f.write(TEMPLATE.format(
+            realm=realm.upper(),
+            domain_controller_ip=dcip,
+            domain=realm.lower()
+            ))
+        f.close()
 
 
 def getKrbConfigLocation():
