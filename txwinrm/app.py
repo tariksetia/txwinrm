@@ -19,7 +19,7 @@ from .enumerate import create_winrm_client
 from .util import ConnectionInfo, verify_conn_info, UnauthorizedError
 
 logging.basicConfig()
-log = logging.getLogger('zen.winrm')
+log = logging.getLogger('winrm')
 _exit_status = 0
 DEFAULT_SCHEME = 'http'
 DEFAULT_PORT = 5985

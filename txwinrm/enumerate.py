@@ -44,7 +44,7 @@ except ImportError:
 from . import constants as c
 from .util import RequestSender, get_datetime, RequestError
 
-log = logging.getLogger('zen.winrm')
+log = logging.getLogger('winrm')
 _MAX_REQUESTS_PER_ENUMERATION = 9999
 DEFAULT_RESOURCE_URI = '{0}/*'.format(c.WMICIMV2)
 _MARKER = object()

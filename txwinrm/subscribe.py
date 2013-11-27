@@ -13,7 +13,7 @@ from twisted.internet import defer
 from . import constants as c
 from .util import create_etree_request_sender, get_datetime
 
-log = logging.getLogger('zen.winrm')
+log = logging.getLogger('winrm')
 _MAX_PULL_REQUESTS_PER_BATCH = 999999
 
 _EVENT_QUERY_FMT = '&lt;QueryList&gt;&lt;Query Path=&quot;{path}&quot;&gt;' \

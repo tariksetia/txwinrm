@@ -21,7 +21,7 @@ from .util import (
 
 
 EnumInfo = namedtuple('EnumInfo', ['wql', 'resource_uri'])
-log = logging.getLogger('zen.winrm')
+log = logging.getLogger('winrm')
 
 
 def create_enum_info(wql, resource_uri=DEFAULT_RESOURCE_URI):

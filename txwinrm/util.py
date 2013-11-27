@@ -29,7 +29,7 @@ try:
 except ImportError:
     pass
 
-log = logging.getLogger('zen.winrm')
+log = logging.getLogger('winrm')
 _XML_WHITESPACE_PATTERN = re.compile(r'>\s+<')
 _AGENT = None
 _MAX_PERSISTENT_PER_HOST = 200
