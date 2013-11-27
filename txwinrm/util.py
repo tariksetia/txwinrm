@@ -245,15 +245,19 @@ def createDomainFile(realm, dcip):
         realm.replace(".", "_").upper()
         )
 
-    if not os.path.isfile(domainfile):
-        f = open(domainfile, 'w')
-        f.write(TEMPLATE.format(
-            realm=realm.upper(),
-            domain_controller_ip=dcip,
-            domain=realm.lower()
-            ))
-        f.close()
-    return domainfile
+    if len(realm) > 0 and len(dcip) > 0:
+        if not os.path.isfile(domainfile):
+            f = open(domainfile, 'w')
+            f.write(TEMPLATE.format(
+                realm=realm.upper(),
+                domain_controller_ip=dcip,
+                domain=realm.lower()
+                ))
+            f.close()
+        return domainfile
+    else:
+        log.info("Configuration for Realm or KRB IP is missing")
+        return
 
 
 def getKrbConfigLocation():
