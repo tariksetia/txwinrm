@@ -223,7 +223,11 @@ class KinitProcessProtocol(ProcessProtocol):
             if self._dcip not in open(domainfile).read():
                 os.remove(domainfile)
 
-        createDomainFile(self._realm, self._dcip, domainfile)
+        if len(self._realm) > 0 and len(self._dcip) > 0:
+            createDomainFile(self._realm, self._dcip, domainfile)
+        else:
+            log.info('Configuration information for REALM and KRB must be set')
+            return
 
         self._data += data
         if 'Password for' in self._data and ':' in self._data:
@@ -242,7 +246,11 @@ class KinitProcessProtocol(ProcessProtocol):
             if self._dcip not in open(domainfile).read():
                 os.remove(domainfile)
 
-        domainfile = createDomainFile(self._realm, self._dcip, domainfile)
+        if len(self._realm) > 0 and len(self._dcip) > 0:
+            domainfile = createDomainFile(self._realm, self._dcip, domainfile)
+        else:
+            log.info('Configuration information for REALM and KRB must be set')
+            return
         log.debug("kinit domain file {0}".format(domainfile))
         log.debug("kinit wrote to stdin: {0}".format(data))
 
