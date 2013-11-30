@@ -293,12 +293,9 @@ def kinit(username, password, dcip):
     if os.path.isfile(kinit):
         userid, realm = username.split('@')
         kinit_args = [kinit, '{0}@{1}'.format(userid, realm.upper())]
-        env = {
-            'ZENHOME': os.environ['ZENHOME'],
+        env = {'ZENHOME': os.environ['ZENHOME'],
             'HOME': os.environ['HOME'],
-            'KRB5_CONFIG': "{0}/{1}krb5.conf" .format(
-                getKrbConfigLocation(),
-                _KRBCONFIG)
+            'KRB5_CONFIG': os.environ['KRB5_CONFIG'],
             }
 
         log.debug('spawning kinit process: {0} and {1}'.format(kinit_args, env))
