@@ -22,13 +22,6 @@ from twisted.internet.ssl import ClientContextFactory
 from twisted.web.http_headers import Headers
 from . import constants as c
 
-KERBEROS_INSTALLED = False
-try:
-    import kerberos
-    KERBEROS_INSTALLED = True
-except ImportError:
-    pass
-
 log = logging.getLogger('winrm')
 _XML_WHITESPACE_PATTERN = re.compile(r'>\s+<')
 _AGENT = None
@@ -90,6 +83,27 @@ TEMPLATE = """
  .{domain} = {realm}
  {domain} = {realm}
 """
+
+
+def getKrbConfigLocation():
+    if os.environ['ZENHOME']:
+        return os.environ['ZENHOME']
+    else:
+        return os.environ['HOME']
+
+
+# Setup our custom KRB5_CONFIG before importing kerberos just in
+# case it uses it during initilization.
+os.environ['KRB5_CONFIG'] = os.path.join(
+    getKrbConfigLocation(), _KRBCONFIG, 'krb5.conf')
+
+
+KERBEROS_INSTALLED = False
+try:
+    import kerberos
+    KERBEROS_INSTALLED = True
+except ImportError:
+    pass
 
 
 def _has_get_attr(obj, attr_name):
@@ -251,7 +265,7 @@ class KinitProcessProtocol(ProcessProtocol):
                 os.remove(domainfile)
 
         if len(self._realm) > 0 and len(self._dcip) > 0:
-            domainfile = createDomainFile(self._realm, self._dcip, domainfile)
+            createDomainFile(self._realm, self._dcip, domainfile)
         else:
             log.info('Configuration information for REALM and KRB must be set')
             return
@@ -278,13 +292,6 @@ def createDomainFile(realm, dcip, domainfile):
             domain=realm.lower()
             ))
         f.close()
-
-
-def getKrbConfigLocation():
-    if os.environ['ZENHOME']:
-        return os.environ['ZENHOME']
-    else:
-        return os.environ['HOME']
 
 
 @defer.inlineCallbacks
@@ -406,6 +413,7 @@ def _authenticate_with_kerberos(conn_info, url):
         f.write(KRB5TEMPLATE.format(
             domainsdir=krbdomainspath,
             ))
+        f.close()
 
     service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
     gss_client = AuthGSSClient(
