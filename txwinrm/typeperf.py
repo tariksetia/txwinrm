@@ -14,7 +14,7 @@ from twisted.internet import reactor, defer, task
 from . import app
 from .shell import create_typeperf
 
-log = logging.getLogger('zen.winrm')
+log = logging.getLogger('winrm')
 
 
 class TypeperfUtility(object):

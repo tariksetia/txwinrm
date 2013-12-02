@@ -14,7 +14,7 @@ from twisted.internet import defer, task, reactor
 from . import app
 from .subscribe import create_event_subscription
 
-log = logging.getLogger('zen.winrm')
+log = logging.getLogger('winrm')
 SubscriptionInfo = namedtuple('SubscriptionInfo', ['path', 'select'])
 
 
