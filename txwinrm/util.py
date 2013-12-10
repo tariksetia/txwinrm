@@ -12,6 +12,7 @@ import re
 import base64
 import logging
 import httplib
+import platform
 from datetime import datetime
 from collections import namedtuple
 from xml.etree import cElementTree as ET
@@ -296,7 +297,14 @@ def createDomainFile(realm, dcip, domainfile):
 
 @defer.inlineCallbacks
 def kinit(username, password, dcip):
-    kinit = '/usr/bin/kinit'
+    osrelease = platform.release()
+    if 'el6' in osrelease:
+        kinit = '/usr/bin/kinit'
+    elif 'el5' in osrelease:
+        kinit = '/usr/kerberos/bin/kinit'
+    else:
+        kinit = '/usr/bin/kinit'
+
     if os.path.isfile(kinit):
         userid, realm = username.split('@')
         kinit_args = [kinit, '{0}@{1}'.format(userid, realm.upper())]
