@@ -18,9 +18,9 @@ from twisted.internet import defer, reactor
 from twisted.internet.protocol import ProcessProtocol
 
 
-# The only usage of this module should be through the kinit module.
 __all__ = [
     'kinit',
+    'ccname',
     ]
 
 
@@ -110,6 +110,29 @@ class Config(object):
 
         return os.path.join('/etc', 'krb5.conf')
 
+    def get_ccname(self, username):
+        '''
+        Return KRB5CCNAME environment for username.
+
+        We use a separate credential cache for each username because
+        kinit causes all previous credentials to be destroyed when a new
+        one is initialized.
+
+        https://groups.google.com/forum/#!topic/comp.protocols.kerberos/IjtK9Mo39qc
+        '''
+        if 'KRB5CCNAME' in os.environ:
+            return os.environ['KRB5CCNAME']
+
+        if 'ZENHOME' in os.environ:
+            return os.path.join(
+                os.environ['ZENHOME'], 'var', 'krb5cc', username)
+
+        if 'HOME' in os.environ:
+            return os.path.join(
+                os.environ['HOME'], '.txwinrm', 'krb5cc', username)
+
+        return ''
+
     def load(self):
         '''
         Load current realms from KRB5_CONFIG file.
@@ -164,6 +187,10 @@ class Config(object):
                 DOMAIN_REALM_TEMPLATE.format(
                     domain=realm.lower(), realm=realm.upper()))
 
+        dirname = os.path.dirname(self.path)
+        if not os.path.isdir(dirname):
+            os.makedirs(dirname)
+
         with open(self.path, 'w') as krb5_conf:
             krb5_conf.write(
                 KRB5_CONF_TEMPLATE.format(
@@ -176,11 +203,15 @@ config = Config()
 
 
 class KinitProcessProtocol(ProcessProtocol):
+    '''
+    Communicates with kinit command.
 
-    def __init__(self, realm, password, kdc):
+    The only thing we do is answer the password prompt. We don't even
+    care about the output.
+    '''
+
+    def __init__(self, password):
         self._password = password
-        self._realm = realm
-        self._kdc = kdc
         self.d = defer.Deferred()
         self._data = ''
 
@@ -216,13 +247,29 @@ def kinit(username, password, kdc):
     realm = realm.upper()
 
     global config
+
     config.add_kdc(realm, kdc)
 
-    kinit_args = [kinit, '{}@{}'.format(user, realm)]
-    kinit_env = {'KRB5_CONFIG': config.path}
+    ccname = config.get_ccname(username)
+    dirname = os.path.dirname(ccname)
+    if not os.path.isdir(dirname):
+        os.makedirs(dirname)
 
-    protocol = KinitProcessProtocol(realm, password, kdc)
+    kinit_args = [kinit, '{}@{}'.format(user, realm)]
+    kinit_env = {
+        'KRB5_CONFIG': config.path,
+        'KRB5CCNAME': ccname,
+        }
+
+    protocol = KinitProcessProtocol(password)
 
     reactor.spawnProcess(protocol, kinit, kinit_args, kinit_env)
 
     yield protocol.d
+
+
+def ccname(username):
+    '''
+    Return KRB5CCNAME value for username.
+    '''
+    return config.get_ccname(username)

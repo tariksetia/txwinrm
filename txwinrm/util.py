@@ -22,7 +22,7 @@ from twisted.internet.ssl import ClientContextFactory
 from twisted.web.http_headers import Headers
 from . import constants as c
 
-from txwinrm.krb5 import kinit
+from txwinrm.krb5 import kinit, ccname
 
 import kerberos
 
@@ -182,6 +182,8 @@ class AuthGSSClient(object):
         self._username = username
         self._password = password
         self._dcip = dcip
+
+        os.environ['KRB5CCNAME'] = ccname(username)
         result_code, self._context = kerberos.authGSSClientInit(service)
         if result_code != kerberos.AUTH_GSS_COMPLETE:
             raise Exception('kerberos authGSSClientInit failed')
