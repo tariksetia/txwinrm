@@ -24,7 +24,12 @@ from . import constants as c
 
 from txwinrm.krb5 import kinit, ccname
 
-import kerberos
+try:
+    import kerberos
+except ImportError:
+    # ZEN-9500: This module may be imported for non-kerberos purposes
+    # before the kerberos module is available.
+    pass
 
 
 log = logging.getLogger('winrm')
