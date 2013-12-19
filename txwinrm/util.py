@@ -22,7 +22,7 @@ from twisted.internet.ssl import ClientContextFactory
 from twisted.web.http_headers import Headers
 from . import constants as c
 
-from txwinrm.krb5 import kinit, ccname
+from .krb5 import kinit, ccname
 
 try:
     import kerberos
