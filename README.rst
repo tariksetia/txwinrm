@@ -97,9 +97,9 @@ Command Prompt as Administrator and execute the following commands
 ::
 
     winrm quickconfig
-    winrm s winrm/config/service @{AllowUnencrypted="true";MaxConcurrentOperationsPerUser="4294967295"}
-    winrm s winrm/config/service/auth @{Basic="true"}
-    winrm s winrm/config/winrs @{MaxShellsPerUser="2147483647"}
+    winrm s winrm/config/service '@{AllowUnencrypted="true";MaxConcurrentOperationsPerUser="4294967295"}'
+    winrm s winrm/config/service/auth '@{Basic="true"}'
+    winrm s winrm/config/winrs '@{MaxShellsPerUser="2147483647"}'
 
 
 WQL Queries
