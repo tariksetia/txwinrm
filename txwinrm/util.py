@@ -12,6 +12,7 @@ import re
 import base64
 import logging
 import httplib
+import re
 from datetime import datetime
 from collections import namedtuple
 from xml.etree import cElementTree as ET
@@ -31,7 +32,6 @@ except ImportError:
     # before the kerberos module is available.
     pass
 
-
 log = logging.getLogger('winrm')
 _XML_WHITESPACE_PATTERN = re.compile(r'>\s+<')
 _AGENT = None
@@ -49,8 +49,14 @@ _REQUEST_TEMPLATES = {}
 _CONTENT_TYPE = {'Content-Type': ['application/soap+xml;charset=UTF-8']}
 _MAX_KERBEROS_RETRIES = 3
 _MARKER = object()
-
-
+_ENCRYPTED_CONTENT_TYPE={"Content-Type" : ["multipart/encrypted;protocol=\"application/HTTP-Kerberos-session-encrypted\";boundary=\"Encrypted Boundary\""]}
+_BODY="""--Encrypted Boundary
+Content-Type: application/HTTP-Kerberos-session-encrypted
+OriginalContent: type=application/soap+xml;charset=UTF-8;Length={original_length}
+--Encrypted Boundary
+Content-Type: application/octet-stream
+{emsg}--Encrypted Boundary
+"""
 def _has_get_attr(obj, attr_name):
     attr_value = getattr(obj, attr_name, _MARKER)
     if attr_value is _MARKER:
@@ -66,28 +72,20 @@ class MyWebClientContextFactory(object):
     def getContext(self, hostname, port):
         return self._options.getContext()
 
-
 def _get_agent():
-    global _AGENT
-    if _AGENT is None:
-        context_factory = MyWebClientContextFactory()
-        try:
-            # HTTPConnectionPool has been present since Twisted version 12.1
-            from twisted.web.client import HTTPConnectionPool
-            pool = HTTPConnectionPool(reactor, persistent=True)
-            pool.maxPersistentPerHost = _MAX_PERSISTENT_PER_HOST
-            pool.cachedConnectionTimeout = _CACHED_CONNECTION_TIMEOUT
-            _AGENT = Agent(reactor, context_factory,
-                           connectTimeout=_CONNECT_TIMEOUT, pool=pool)
-        except ImportError:
-            try:
-                # connectTimeout first showed up in Twisted version 11.1
-                _AGENT = Agent(
-                    reactor, context_factory, connectTimeout=_CONNECT_TIMEOUT)
-            except TypeError:
-                _AGENT = Agent(reactor, context_factory)
-    return _AGENT
-
+    context_factory = MyWebClientContextFactory()
+    try:
+        # HTTPConnectionPool has been present since Twisted version 12.1
+        from twisted.web.client import HTTPConnectionPool
+        pool = HTTPConnectionPool(reactor, persistent=True)
+        pool.maxPersistentPerHost = _MAX_PERSISTENT_PER_HOST
+        pool.cachedConnectionTimeout = _CACHED_CONNECTION_TIMEOUT
+        agent = Agent(reactor, context_factory,
+                       connectTimeout=_CONNECT_TIMEOUT, pool=pool)
+    except ImportError:
+        from _zenclient import ZenAgent
+        agent = ZenAgent(reactor, context_factory, persistent=True, maxConnectionsPerHostName=1)
+    return agent
 
 class _StringProducer(object):
     """
@@ -116,7 +114,6 @@ class _StringProducer(object):
     def stopProducing(self):
         pass
 
-
 def _parse_error_message(xml_str):
     elem = ET.fromstring(xml_str)
     text = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Text').strip()
@@ -126,15 +123,20 @@ def _parse_error_message(xml_str):
 
 class _ErrorReader(Protocol):
 
-    def __init__(self):
+    def __init__(self, gssclient=None):
         self.d = defer.Deferred()
         self._data = []
+        self.gssclient = gssclient
 
     def dataReceived(self, data):
         self._data.append(data)
 
     def connectionLost(self, reason):
-        message = _parse_error_message(''.join(self._data))
+        if self.gssclient:
+            body = self.gssclient.decrypt_body(''.join(self._data))
+        else:
+            body = ''.join(self._data)
+        message = _parse_error_message(body)
         self.d.callback(message)
 
 
@@ -187,9 +189,10 @@ class AuthGSSClient(object):
         self._username = username
         self._password = password
         self._dcip = dcip
+        gssflags = kerberos.GSS_C_CONF_FLAG|kerberos.GSS_C_MUTUAL_FLAG|kerberos.GSS_C_SEQUENCE_FLAG|kerberos.GSS_C_INTEG_FLAG
 
         os.environ['KRB5CCNAME'] = ccname(username)
-        result_code, self._context = kerberos.authGSSClientInit(service)
+        result_code, self._context = kerberos.authGSSClientInit(service,gssflags=gssflags)
         if result_code != kerberos.AUTH_GSS_COMPLETE:
             raise Exception('kerberos authGSSClientInit failed')
 
@@ -249,9 +252,41 @@ class AuthGSSClient(object):
                             .format(result_code, challenge))
         return kerberos.authGSSClientUserName(self._context)
 
+    def encrypt_body(self, body):
+        # get original length of body. wrap will encrypt in place
+        orig_len = len(body)
+        # encode before sending to wrap func
+        ebody = base64.b64encode(body)
+        # wrap it up
+        rc,pad_len = kerberos.authGSSClientWrapIov(self._context,ebody,1)
+        if rc is not kerberos.AUTH_GSS_COMPLETE:
+            log.debug("Unable to encrypt message body")
+            return
+        # get wrapped request which is in b64 encoding
+        ewrap = kerberos.authGSSClientResponse(self._context)
+        # decode wrapped request
+        payload = bytes(base64.b64decode(ewrap))
+        # add carriage returns to body
+        body = _BODY.replace('\n','\r\n')
+        body = bytes(body.format(original_length=orig_len+pad_len,emsg=payload))
+        return body
+
+    def decrypt_body(self, body):
+        b_start = body.index("Content-Type: application/octet-stream") + \
+                  len("Content-Type: application/octet-stream\r\n")
+        b_end = body.index("--Encrypted Boundary",b_start)
+        ebody = body[b_start:b_end]
+        ebody = base64.b64encode(ebody)
+        rc = kerberos.authGSSClientUnwrapIov(self._context, ebody)
+        if rc is not kerberos.AUTH_GSS_COMPLETE:
+            log.debug("Unable to decrypt message body")
+            return
+        ewrap = kerberos.authGSSClientResponse(self._context)
+        body = base64.b64decode(ewrap)
+        return body
 
 @defer.inlineCallbacks
-def _authenticate_with_kerberos(conn_info, url):
+def _authenticate_with_kerberos(conn_info, url, agent):
     service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
     gss_client = AuthGSSClient(
         service,
@@ -264,7 +299,7 @@ def _authenticate_with_kerberos(conn_info, url):
     k_headers = Headers(_CONTENT_TYPE)
     k_headers.addRawHeader('Authorization', auth)
     k_headers.addRawHeader('Content-Length', '0')
-    response = yield _get_agent().request('POST', url, k_headers, None)
+    response = yield agent.request('POST', url, k_headers, None)
     if response.code == httplib.UNAUTHORIZED:
         raise UnauthorizedError(
             "HTTP Unauthorized received on initial kerberos request.")
@@ -275,6 +310,7 @@ def _authenticate_with_kerberos(conn_info, url):
         proto = _StringProtocol()
         response.deliverBody(proto)
         xml_str = yield proto.d
+        xml_str = _decrypt_body(gss_client._context, xml_str)
         raise Exception(
             "status code {0} received on initial kerberos request {1}"
             .format(response.code, xml_str))
@@ -291,37 +327,7 @@ def _authenticate_with_kerberos(conn_info, url):
     k_username = gss_client.get_username(auth_details)
     log.debug('kerberos auth successful for user: {0} / {1} '
               .format(conn_info.username, k_username))
-
-
-@defer.inlineCallbacks
-def _kerberos_auth_key(conn_info, url):
-    service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
-    gss_client = AuthGSSClient(
-        service,
-        conn_info.username,
-        conn_info.password,
-        conn_info.dcip)
-    base64_client_data = yield gss_client.get_base64_client_data()
-    auth = 'Kerberos {0}'.format(base64_client_data)
-    defer.returnValue(auth)
-
-
-@defer.inlineCallbacks
-def _get_url_and_headers(conn_info):
-    url = "{c.scheme}://{c.hostname}:{c.port}/wsman".format(c=conn_info)
-    headers = Headers(_CONTENT_TYPE)
-    headers.addRawHeader('Connection', conn_info.connectiontype)
-    if conn_info.auth_type == 'basic':
-        headers.addRawHeader(
-            'Authorization', _get_basic_auth_header(conn_info))
-    elif conn_info.auth_type == 'kerberos':
-        yield _authenticate_with_kerberos(conn_info, url)
-        kerbkey = yield _kerberos_auth_key(conn_info, url)
-        headers.addRawHeader('Authorization', kerbkey)
-    else:
-        raise Exception('unknown auth type: {0}'.format(conn_info.auth_type))
-    defer.returnValue((url, headers))
-
+    defer.returnValue(gss_client)
 
 ConnectionInfo = namedtuple(
     'ConnectionInfo', [
@@ -398,14 +404,39 @@ class RequestSender(object):
         self._conn_info = conn_info
         self._url = None
         self._headers = None
+        self.gssclient = None
+        self.agent = _get_agent()
+
+    @defer.inlineCallbacks
+    def _get_url_and_headers(self):
+        url = "{c.scheme}://{c.hostname}:{c.port}/wsman".format(c=self._conn_info)
+        if self._conn_info.auth_type == 'basic':
+            headers = Headers(_CONTENT_TYPE)
+            headers.addRawHeader('Connection', self._conn_info.connectiontype)
+            headers.addRawHeader(
+                'Authorization', _get_basic_auth_header(self._conn_info))
+        elif self.is_kerberos():
+            headers = Headers(_ENCRYPTED_CONTENT_TYPE)
+            headers.addRawHeader('Connection', self._conn_info.connectiontype)
+            if self.gssclient is None:
+                self.gssclient = yield _authenticate_with_kerberos(self._conn_info, url, self.agent)
+        else:
+            raise Exception('unknown auth type: {0}'.format(self._conn_info.auth_type))
+        defer.returnValue((url, headers))
 
     @defer.inlineCallbacks
     def _set_url_and_headers(self):
-        self._url, self._headers = yield _get_url_and_headers(self._conn_info)
+        self._url, self._headers = yield self._get_url_and_headers()
 
     @property
     def hostname(self):
         return self._conn_info.hostname
+
+    def is_kerberos(self):
+        return self._conn_info.auth_type == 'kerberos'
+
+    def decrypt_body(self, body):
+        return self.gssclient.decrypt_body(body)
 
     @defer.inlineCallbacks
     def send_request(self, request_template_name, **kwargs):
@@ -414,11 +445,16 @@ class RequestSender(object):
         if not self._url or self._conn_info.auth_type == 'kerberos':
             yield self._set_url_and_headers()
         request = _get_request_template(request_template_name).format(**kwargs)
-        # log.debug(request)
-        body_producer = _StringProducer(request)
-        #import pdb; pdb.set_trace()
-        response = yield _get_agent().request(
-            'POST', self._url, self._headers, body_producer)
+        if self.is_kerberos():
+            encrypted_request = self.gssclient.encrypt_body(request)
+            body_producer = _StringProducer(encrypted_request)
+        else:
+            body_producer = _StringProducer(request)
+        try:
+            response = yield self.agent.request(
+                'POST', self._url, self._headers, body_producer)
+        except Exception as e:
+            raise e
         log.debug('received response {0} {1}'.format(
             response.code, request_template_name))
         if response.code == httplib.FORBIDDEN:
@@ -428,7 +464,10 @@ class RequestSender(object):
             raise UnauthorizedError(
                 "Unauthorized: Check username and password")
         elif response.code != httplib.OK:
-            reader = _ErrorReader()
+            if self.is_kerberos():
+                reader = _ErrorReader(self.gssclient)
+            else:
+                reader = _ErrorReader()
             response.deliverBody(reader)
             message = yield reader.d
             raise RequestError("HTTP status: {0}. {1}".format(
@@ -461,7 +500,11 @@ class EtreeRequestSender(object):
             request_template_name, **kwargs)
         proto = _StringProtocol()
         resp.deliverBody(proto)
-        xml_str = yield proto.d
+        body = yield proto.d
+        if self._sender.is_kerberos():
+            xml_str = self._sender.gssclient.decrypt_body(body)
+        else:
+            xml_str = yield body
         if log.isEnabledFor(logging.DEBUG):
             try:
                 import xml.dom.minidom

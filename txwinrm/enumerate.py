@@ -106,7 +106,7 @@ def create_winrm_client(conn_info):
     Constructs a WinRM client with the default response handler.
     """
     sender = RequestSender(conn_info)
-    return WinrmClient(sender, SaxResponseHandler())
+    return WinrmClient(sender, SaxResponseHandler(sender))
 
 
 def create_parser_and_factory():
@@ -130,6 +130,8 @@ class SaxResponseHandler(object):
     """
     The default response handler.
     """
+    def __init__(self, sender):
+        self._sender = sender
 
     @defer.inlineCallbacks
     def handle_response(self, response):
@@ -138,7 +140,7 @@ class SaxResponseHandler(object):
         enumeration-context and items.
         """
         parser, factory = create_parser_and_factory()
-        proto = ParserFeedingProtocol(parser)
+        proto = ParserFeedingProtocol(parser, self._sender)
         response.deliverBody(proto)
         yield proto.d
         defer.returnValue((factory.enumeration_context, factory.items))
@@ -211,15 +213,21 @@ class ParserFeedingProtocol(Protocol):
     A Twisted Protocol that feeds an XML parser as data is received.
     """
 
-    def __init__(self, xml_parser):
+    def __init__(self, xml_parser, sender):
         self._xml_parser = xml_parser
         self.d = defer.Deferred()
         self._debug_data = ''
+        self._sender = sender
+        self._data = [] 
 
     def dataReceived(self, data):
         """
         Called from Twisted when data is received.
         """
+        if self._sender.is_kerberos():
+            self._data.append(data)
+            return
+
         if log.isEnabledFor(logging.DEBUG):
             self._debug_data += data
             log.debug("ParserFeedingProtocol dataReceived {0}"
@@ -231,6 +239,11 @@ class ParserFeedingProtocol(Protocol):
         Called from Twisted indicating that dataReceived has been called for
         the last time.
         """
+        if self._sender.is_kerberos():
+            #  Decrypt data first
+            data = self._sender.decrypt_body(''.join(self._data))
+            self._debug_data = data
+            self._xml_parser.feed(data)
         if self._debug_data and log.isEnabledFor(logging.DEBUG):
             try:
                 import xml.dom.minidom
@@ -544,7 +557,6 @@ class TagStackStateError(Exception):
     """
     pass
 
-
 class ItemsContentHandler(sax.handler.ContentHandler):
     """
     A SAX content handler that handles the list of items in the WinRM response.
@@ -565,7 +577,6 @@ class ItemsContentHandler(sax.handler.ContentHandler):
         </Items>
 
     """
-
     def __init__(self, text_buffer):
         self._text_buffer = text_buffer
         self._accumulator = ItemsAccumulator()
