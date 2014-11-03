@@ -12,7 +12,6 @@ import re
 import base64
 import logging
 import httplib
-import re
 from datetime import datetime
 from collections import namedtuple
 from xml.etree import cElementTree as ET
@@ -310,7 +309,7 @@ def _authenticate_with_kerberos(conn_info, url, agent):
         proto = _StringProtocol()
         response.deliverBody(proto)
         xml_str = yield proto.d
-        xml_str = _decrypt_body(gss_client._context, xml_str)
+        xml_str = gss_client.decrypt_body(gss_client._context, xml_str)
         raise Exception(
             "status code {0} received on initial kerberos request {1}"
             .format(response.code, xml_str))

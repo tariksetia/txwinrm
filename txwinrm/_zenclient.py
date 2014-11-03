@@ -1,12 +1,12 @@
+from twisted.python import log
 from twisted.web._newclient import Request, HTTP11ClientProtocol, BadHeaders, ResponseFailed, \
-                                   RequestNotSent, TransportProxyProducer, HTTPClientParser
+                                   RequestNotSent, TransportProxyProducer, HTTPClientParser, RequestGenerationFailed
 from twisted.web.client import Agent, _parse
 from twisted.python.failure import Failure
 from twisted.web.http_headers import Headers
 from twisted.internet.defer import Deferred, succeed, fail, maybeDeferred, DeferredSemaphore
 from twisted.internet.error import ConnectionDone
-from twisted.internet.protocol import ClientCreator
-from twisted.web.error import SchemeNotSupported
+
 try:
     from twisted.internet.ssl import ClientContextFactory
 except ImportError:
