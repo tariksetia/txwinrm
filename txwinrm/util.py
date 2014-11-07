@@ -257,10 +257,15 @@ class AuthGSSClient(object):
         # encode before sending to wrap func
         ebody = base64.b64encode(body)
         # wrap it up
-        rc,pad_len = kerberos.authGSSClientWrapIov(self._context,ebody,1)
-        if rc is not kerberos.AUTH_GSS_COMPLETE:
-            log.debug("Unable to encrypt message body")
-            return
+        try:
+            rc,pad_len = kerberos.authGSSClientWrapIov(self._context,ebody,1)
+            if rc is not kerberos.AUTH_GSS_COMPLETE:
+                log.debug("Unable to encrypt message body")
+                return
+        except AttributeError:
+            # must be on centos 5, encryption not possible
+            return body
+
         # get wrapped request which is in b64 encoding
         ewrap = kerberos.authGSSClientResponse(self._context)
         # decode wrapped request
@@ -271,8 +276,12 @@ class AuthGSSClient(object):
         return body
 
     def decrypt_body(self, body):
-        b_start = body.index("Content-Type: application/octet-stream") + \
-                  len("Content-Type: application/octet-stream\r\n")
+        try:
+            b_start = body.index("Content-Type: application/octet-stream") + \
+                      len("Content-Type: application/octet-stream\r\n")
+        except ValueError:
+            # Unencrypted data, return body
+            return body
         b_end = body.index("--Encrypted Boundary",b_start)
         ebody = body[b_start:b_end]
         ebody = base64.b64encode(ebody)
@@ -446,6 +455,9 @@ class RequestSender(object):
         request = _get_request_template(request_template_name).format(**kwargs)
         if self.is_kerberos():
             encrypted_request = self.gssclient.encrypt_body(request)
+            if not encrypted_request.startswith("--Encrypted Boundary"):
+                self.headers = Headers(_CONTENT_TYPE)
+                self.headers.addRawHeader('Connection', self._conn_info.connectiontype)
             body_producer = _StringProducer(encrypted_request)
         else:
             body_producer = _StringProducer(request)
