@@ -120,9 +120,6 @@ class Config(object):
 
         https://groups.google.com/forum/#!topic/comp.protocols.kerberos/IjtK9Mo39qc
         '''
-        if 'KRB5CCNAME' in os.environ:
-            return os.environ['KRB5CCNAME']
-
         if 'ZENHOME' in os.environ:
             return os.path.join(
                 os.environ['ZENHOME'], 'var', 'krb5cc', username)
