@@ -87,6 +87,13 @@ class Config(object):
         if kdc in self.realms[realm]:
             return
 
+        '''
+        Remove any old kdcs ZEN-13244
+        '''
+        try:
+            self.realms[realm].pop()
+        except KeyError:
+            pass
         self.realms[realm].add(kdc)
         self.save()
 
