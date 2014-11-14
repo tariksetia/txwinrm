@@ -31,6 +31,7 @@ KRB5_CONF_TEMPLATE = (
     "# NOTE: Any changes to this file will be overwritten.\n"
     "#\n"
     "\n"
+    "includedir {includedir}\n"
     "[logging]\n"
     " default = FILE:/var/log/krb5libs.log\n"
     " kdc = FILE:/var/log/krb5kdc.log\n"
@@ -188,9 +189,15 @@ class Config(object):
         if not os.path.isdir(dirname):
             os.makedirs(dirname)
 
+        # create config dir for user supplied options
+        includedir = os.path.join(dirname, 'config')
+        if not os.path.isdir(includedir):
+            os.makedirs(includedir)
+
         with open(self.path, 'w') as krb5_conf:
             krb5_conf.write(
                 KRB5_CONF_TEMPLATE.format(
+                    includedir=includedir,
                     realms_text=''.join(realms_list),
                     domain_realm_text=''.join(domain_realm_list)))
 
