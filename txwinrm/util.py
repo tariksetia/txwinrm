@@ -414,6 +414,7 @@ class RequestSender(object):
         self._headers = None
         self.gssclient = None
         self.agent = _get_agent()
+        self.authorized = False
 
     @defer.inlineCallbacks
     def _get_url_and_headers(self):
@@ -421,8 +422,10 @@ class RequestSender(object):
         if self._conn_info.auth_type == 'basic':
             headers = Headers(_CONTENT_TYPE)
             headers.addRawHeader('Connection', self._conn_info.connectiontype)
-            headers.addRawHeader(
-                'Authorization', _get_basic_auth_header(self._conn_info))
+            if not self.authorized:
+                headers.addRawHeader(
+                    'Authorization', _get_basic_auth_header(self._conn_info))
+                self.authorized = True
         elif self.is_kerberos():
             headers = Headers(_ENCRYPTED_CONTENT_TYPE)
             headers.addRawHeader('Connection', self._conn_info.connectiontype)
