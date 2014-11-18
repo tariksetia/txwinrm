@@ -225,8 +225,9 @@ class AuthGSSClient(object):
                 break
             except kerberos.GSSError as e:
                 msg = e.args[1][0]
-                if msg == 'Cannot determine realm for numeric host address':
-                    raise
+                if msg == 'Cannot determine realm for numeric host address' or \
+                   msg == 'Server not found in Kerberos database':
+                       raise Exception(msg)
                 log.debug('{0}. Calling kinit.'.format(msg))
                 yield kinit(self._username, self._password, self._dcip)
 
