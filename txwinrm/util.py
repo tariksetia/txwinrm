@@ -354,7 +354,7 @@ ConnectionInfo = namedtuple(
 def verify_hostname(conn_info):
     has_hostname, hostname = _has_get_attr(conn_info, 'hostname')
     if not has_hostname or not hostname:
-        raise Exception("hostname missing")
+        raise Exception("hostname is not resolvable")
 
 
 def verify_auth_type(conn_info):
