@@ -225,8 +225,9 @@ class AuthGSSClient(object):
                 break
             except kerberos.GSSError as e:
                 msg = e.args[1][0]
-                if msg == 'Cannot determine realm for numeric host address':
-                    raise
+                if msg == 'Cannot determine realm for numeric host address' or \
+                   msg == 'Server not found in Kerberos database':
+                       raise Exception(msg)
                 log.debug('{0}. Calling kinit.'.format(msg))
                 yield kinit(self._username, self._password, self._dcip)
 
@@ -353,7 +354,7 @@ ConnectionInfo = namedtuple(
 def verify_hostname(conn_info):
     has_hostname, hostname = _has_get_attr(conn_info, 'hostname')
     if not has_hostname or not hostname:
-        raise Exception("hostname missing")
+        raise Exception("hostname is not resolvable")
 
 
 def verify_auth_type(conn_info):
@@ -414,6 +415,7 @@ class RequestSender(object):
         self._headers = None
         self.gssclient = None
         self.agent = _get_agent()
+        self.authorized = False
 
     @defer.inlineCallbacks
     def _get_url_and_headers(self):
@@ -421,8 +423,10 @@ class RequestSender(object):
         if self._conn_info.auth_type == 'basic':
             headers = Headers(_CONTENT_TYPE)
             headers.addRawHeader('Connection', self._conn_info.connectiontype)
-            headers.addRawHeader(
-                'Authorization', _get_basic_auth_header(self._conn_info))
+            if not self.authorized:
+                headers.addRawHeader(
+                    'Authorization', _get_basic_auth_header(self._conn_info))
+                self.authorized = True
         elif self.is_kerberos():
             headers = Headers(_ENCRYPTED_CONTENT_TYPE)
             headers.addRawHeader('Connection', self._conn_info.connectiontype)
