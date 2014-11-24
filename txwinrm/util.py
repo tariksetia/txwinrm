@@ -24,12 +24,8 @@ from . import constants as c
 
 from .krb5 import kinit, ccname
 
-try:
-    import kerberos
-except ImportError:
-    # ZEN-9500: This module may be imported for non-kerberos purposes
-    # before the kerberos module is available.
-    pass
+# ZEN-15434 lazy import to avoid segmentation fault during install
+kerberos = None
 
 log = logging.getLogger('winrm')
 _XML_WHITESPACE_PATTERN = re.compile(r'>\s+<')
@@ -184,6 +180,11 @@ class AuthGSSClient(object):
         @param service: a string containing the service principal in the form
             'type@fqdn' (e.g. 'imap@mail.apple.com').
         """
+        # ZEN-15434 Lazy import.  import causes segmentation fault because of
+        # differing versions of the kerberos.so file.  Only import here
+        global kerberos
+        if not kerberos:
+            import kerberos
         self._service = service
         self._username = username
         self._password = password
