@@ -110,6 +110,8 @@ class _StringProducer(object):
         pass
 
 def _parse_error_message(xml_str):
+    if not xml_str:
+        return ""
     elem = ET.fromstring(xml_str)
     text = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Text').strip()
     detail = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Detail/*/*').strip()
@@ -296,13 +298,14 @@ class AuthGSSClient(object):
         return body
 
 @defer.inlineCallbacks
-def _authenticate_with_kerberos(conn_info, url, agent):
+def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
     service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
-    gss_client = AuthGSSClient(
-        service,
-        conn_info.username,
-        conn_info.password,
-        conn_info.dcip)
+    if gss_client is None:
+        gss_client = AuthGSSClient(
+            service,
+            conn_info.username,
+            conn_info.password,
+            conn_info.dcip)
 
     base64_client_data = yield gss_client.get_base64_client_data()
     auth = 'Kerberos {0}'.format(base64_client_data)
@@ -473,12 +476,22 @@ class RequestSender(object):
             raise e
         log.debug('received response {0} {1}'.format(
             response.code, request_template_name))
+        if response.code == httplib.UNAUTHORIZED:
+            # check to see if we need to re-authorize due to lost connection
+            if self.gssclient is not None:
+                self.agent = _get_agent()
+                yield _authenticate_with_kerberos(self._conn_info, self._url, self.agent, self.gssclient)
+                try:
+                    response = yield self.agent.request(
+                        'POST', self._url, self._headers, body_producer)
+                except Exception as e:
+                    raise e
+            if response.code == httplib.UNAUTHORIZED:
+                raise UnauthorizedError(
+                    "Unauthorized: Check username and password")
         if response.code == httplib.FORBIDDEN:
             raise ForbiddenError(
                 "Forbidden: Check WinRM port and version")
-        elif response.code == httplib.UNAUTHORIZED:
-            raise UnauthorizedError(
-                "Unauthorized: Check username and password")
         elif response.code != httplib.OK:
             if self.is_kerberos():
                 reader = _ErrorReader(self.gssclient)
