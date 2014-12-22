@@ -269,6 +269,9 @@ class AuthGSSClient(object):
         except AttributeError:
             # must be on centos 5, encryption not possible
             return body
+        except kerberos.GSSError as e:
+            msg = e.args[1][0]
+            raise Exception(msg)
 
         # get wrapped request which is in b64 encoding
         ewrap = kerberos.authGSSClientResponse(self._context)
@@ -289,7 +292,11 @@ class AuthGSSClient(object):
         b_end = body.index("--Encrypted Boundary",b_start)
         ebody = body[b_start:b_end]
         ebody = base64.b64encode(ebody)
-        rc = kerberos.authGSSClientUnwrapIov(self._context, ebody)
+        try:
+            rc = kerberos.authGSSClientUnwrapIov(self._context, ebody)
+        except kerberos.GSSError as e:
+            msg = e.args[1][0]
+            raise Exception(msg)
         if rc is not kerberos.AUTH_GSS_COMPLETE:
             log.debug("Unable to decrypt message body")
             return
