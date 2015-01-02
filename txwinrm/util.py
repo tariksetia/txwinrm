@@ -483,12 +483,18 @@ class RequestSender(object):
             raise e
         log.debug('received response {0} {1}'.format(
             response.code, request_template_name))
-        if response.code == httplib.UNAUTHORIZED:
-            # check to see if we need to re-authorize due to lost connection
+        if response.code == httplib.UNAUTHORIZED or response.code == httplib.BAD_REQUEST:
+            # check to see if we need to re-authorize due to lost connection or bad request error
             if self.gssclient is not None:
                 self.agent = _get_agent()
-                yield _authenticate_with_kerberos(self._conn_info, self._url, self.agent, self.gssclient)
+                self.gssclient = None
                 try:
+                    yield self._set_url_and_headers()
+                    encrypted_request = self.gssclient.encrypt_body(request)
+                    if not encrypted_request.startswith("--Encrypted Boundary"):
+                        self.headers = Headers(_CONTENT_TYPE)
+                        self.headers.addRawHeader('Connection', self._conn_info.connectiontype)
+                    body_producer = _StringProducer(encrypted_request)
                     response = yield self.agent.request(
                         'POST', self._url, self._headers, body_producer)
                 except Exception as e:
