@@ -305,6 +305,10 @@ class AuthGSSClient(object):
         body = base64.b64decode(ewrap)
         return body
 
+    def cleanup(self):
+        kerberos.authGSSClientClean(self._context)
+        self._context = None
+
 @defer.inlineCallbacks
 def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
     service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
@@ -488,6 +492,8 @@ class RequestSender(object):
             # check to see if we need to re-authorize due to lost connection or bad request error
             if self.gssclient is not None:
                 self.agent = _get_agent()
+                # do some cleanup first.  memory leaks were occurring
+                self.gssclient.cleanup()
                 self.gssclient = None
                 try:
                     yield self._set_url_and_headers()
