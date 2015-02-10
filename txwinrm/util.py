@@ -199,9 +199,11 @@ class AuthGSSClient(object):
             raise Exception('kerberos authGSSClientInit failed')
 
     def __del__(self):
-        result_code = kerberos.authGSSClientClean(self._context)
-        if result_code != kerberos.AUTH_GSS_COMPLETE:
-            raise Exception('kerberos authGSSClientClean failed')
+        if self._context is not None:
+            result_code = kerberos.authGSSClientClean(self._context)
+
+            if result_code != kerberos.AUTH_GSS_COMPLETE:
+                raise Exception('kerberos authGSSClientClean failed')
 
     def _step(self, challenge=''):
         """
