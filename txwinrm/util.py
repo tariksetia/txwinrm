@@ -337,7 +337,7 @@ def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
         proto = _StringProtocol()
         response.deliverBody(proto)
         xml_str = yield proto.d
-        xml_str = gss_client.decrypt_body(gss_client._context, xml_str)
+        xml_str = gss_client.decrypt_body(xml_str)
         raise Exception(
             "status code {0} received on initial kerberos request {1}"
             .format(response.code, xml_str))
