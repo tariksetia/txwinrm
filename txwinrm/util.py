@@ -311,6 +311,20 @@ class AuthGSSClient(object):
         kerberos.authGSSClientClean(self._context)
         self._context = None
 
+def get_auth_details(auth_header):
+    if auth_header is None:
+        return ''
+    for field in auth_header.split(','):
+        kind, details = field.strip().split(' ', 1)
+        if kind.lower() == 'kerberos':
+            auth_details = details.strip()
+            break
+    else:
+        raise Exception(
+            'negotiate not found in WWW-Authenticate header: {0}'
+            .format(auth_header))
+    return auth_details
+
 @defer.inlineCallbacks
 def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
     service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
@@ -327,9 +341,19 @@ def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
     k_headers.addRawHeader('Authorization', auth)
     k_headers.addRawHeader('Content-Length', '0')
     response = yield agent.request('POST', url, k_headers, None)
+    auth_header = response.headers.getRawHeaders('WWW-Authenticate')[0]
+    auth_details = get_auth_details(auth_header)
+
     if response.code == httplib.UNAUTHORIZED:
+        try:
+            if len(auth_details):
+                gss_client._step(auth_details)
+        except kerberos.GSSError as e:
+            msg ="HTTP Unauthorized received on kerberos initialization.  "\
+                "Kerberos error code {0}: {1}.".format(e.args[1][1],e.args[1][0])
+            raise Exception(msg)
         raise UnauthorizedError(
-            "HTTP Unauthorized received on initial kerberos request.")
+            "HTTP Unauthorized received on initial kerberos request.  Check username and password")
     elif response.code == httplib.FORBIDDEN:
         raise ForbiddenError(
             "Forbidden. Check WinRM port and version.")
@@ -341,16 +365,6 @@ def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
         raise Exception(
             "status code {0} received on initial kerberos request {1}"
             .format(response.code, xml_str))
-    auth_header = response.headers.getRawHeaders('WWW-Authenticate')[0]
-    for field in auth_header.split(','):
-        kind, details = field.strip().split(' ', 1)
-        if kind.lower() == 'kerberos':
-            auth_details = details.strip()
-            break
-    else:
-        raise Exception(
-            'negotiate not found in WWW-Authenticate header: {0}'
-            .format(auth_header))
     k_username = gss_client.get_username(auth_details)
     log.debug('kerberos auth successful for user: {0} / {1} '
               .format(conn_info.username, k_username))
@@ -509,8 +523,17 @@ class RequestSender(object):
                 except Exception as e:
                     raise e
             if response.code == httplib.UNAUTHORIZED:
+                auth_header = response.headers.getRawHeaders('WWW-Authenticate')[0]
+                auth_details = get_auth_details(auth_header)
+                try:
+                    if len(auth_details):
+                        self.gssclient._step(auth_details)
+                except kerberos.GSSError as e:
+                    msg ="HTTP Unauthorized received.  "\
+                    "Kerberos error code {0}: {1}.".format(e.args[1][1],e.args[1][0])
+                    raise Exception(msg)
                 raise UnauthorizedError(
-                    "Unauthorized: Check username and password")
+                    "HTTP Unauthorized received: Check username and password")
         if response.code == httplib.FORBIDDEN:
             raise ForbiddenError(
                 "Forbidden: Check WinRM port and version")
