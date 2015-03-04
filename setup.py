@@ -11,12 +11,12 @@
 
 setup_kwargs = dict(
     name='txwinrm',
-    version='1.1.14',
+    version='1.1.15dev',
     description='Asynchronous Python WinRM client',
     long_description=open('README.rst').read(),
     license='See LICENSE file',
     author='Zenoss',
-    author_email='bedwards@zenoss.com',
+    author_email='dbouchillon@zenoss.com',
     url='https://github.com/zenoss/txwinrm',
     packages=['txwinrm', 'txwinrm.request'],
     package_data={'txwinrm.request': ['*.xml']},
