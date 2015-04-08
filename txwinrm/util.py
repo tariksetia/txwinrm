@@ -194,7 +194,10 @@ class AuthGSSClient(object):
         gssflags = kerberos.GSS_C_CONF_FLAG|kerberos.GSS_C_MUTUAL_FLAG|kerberos.GSS_C_SEQUENCE_FLAG|kerberos.GSS_C_INTEG_FLAG
 
         os.environ['KRB5CCNAME'] = ccname(username)
-        result_code, self._context = kerberos.authGSSClientInit(service,gssflags=gssflags)
+        if hasattr(kerberos, 'authGSSClientWrapIov'):
+            result_code, self._context = kerberos.authGSSClientInit(service,gssflags=gssflags)
+        else:
+            result_code, self._context = kerberos.authGSSClientInit(service)
         if result_code != kerberos.AUTH_GSS_COMPLETE:
             raise Exception('kerberos authGSSClientInit failed')
 
@@ -491,8 +494,7 @@ class RequestSender(object):
         if self.is_kerberos():
             encrypted_request = self.gssclient.encrypt_body(request)
             if not encrypted_request.startswith("--Encrypted Boundary"):
-                self.headers = Headers(_CONTENT_TYPE)
-                self.headers.addRawHeader('Connection', self._conn_info.connectiontype)
+                self._headers.setRawHeaders('Content-Type', _CONTENT_TYPE['Content-Type'])
             body_producer = _StringProducer(encrypted_request)
         else:
             body_producer = _StringProducer(request)
@@ -514,8 +516,7 @@ class RequestSender(object):
                     yield self._set_url_and_headers()
                     encrypted_request = self.gssclient.encrypt_body(request)
                     if not encrypted_request.startswith("--Encrypted Boundary"):
-                        self.headers = Headers(_CONTENT_TYPE)
-                        self.headers.addRawHeader('Connection', self._conn_info.connectiontype)
+                        self._headers.setRawHeaders('Content-Type', _CONTENT_TYPE['Content-Type'])
                     body_producer = _StringProducer(encrypted_request)
                     response = yield self.agent.request(
                         'POST', self._url, self._headers, body_producer)
