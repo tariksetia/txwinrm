@@ -375,8 +375,8 @@ def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
               .format(conn_info.username, k_username))
     defer.returnValue(gss_client)
 
-ConnectionInfo = namedtuple(
-    'ConnectionInfo', [
+class ConnectionInfo(namedtuple(
+    'ConnectionInfoTuple', [
         'hostname',
         'auth_type',
         'username',
@@ -386,8 +386,9 @@ ConnectionInfo = namedtuple(
         'connectiontype',
         'keytab',
         'dcip',
-        'timeout'])
-
+        'timeout'])):
+    def __new__(cls, hostname, auth_type, username, password, scheme, port, connectiontype, keytab, dcip, timeout=60):
+        return super(ConnectionInfo, cls).__new__(cls, hostname, auth_type, username, password, scheme, port, connectiontype, keytab, dcip, timeout)
 
 def verify_hostname(conn_info):
     has_hostname, hostname = _has_get_attr(conn_info, 'hostname')
