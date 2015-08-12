@@ -15,6 +15,7 @@ import httplib
 from datetime import datetime
 from collections import namedtuple
 from xml.etree import cElementTree as ET
+from xml.etree.ElementTree import ParseError
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol
 from twisted.web.client import Agent
