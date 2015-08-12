@@ -376,7 +376,7 @@ def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
     defer.returnValue(gss_client)
 
 class ConnectionInfo(namedtuple(
-    'ConnectionInfoTuple', [
+    'ConnectionInfo', [
         'hostname',
         'auth_type',
         'username',
