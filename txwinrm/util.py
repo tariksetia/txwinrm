@@ -15,6 +15,7 @@ import httplib
 from datetime import datetime
 from collections import namedtuple
 from xml.etree import cElementTree as ET
+from xml.etree.ElementTree import ParseError
 from twisted.internet import reactor, defer
 from twisted.internet.protocol import Protocol
 from twisted.web.client import Agent
@@ -112,9 +113,12 @@ class _StringProducer(object):
 def _parse_error_message(xml_str):
     if not xml_str:
         return ""
-    elem = ET.fromstring(xml_str)
-    text = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Text').strip()
-    detail = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Detail/*/*').strip()
+    try:
+        elem = ET.fromstring(xml_str)
+        text = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Text').strip()
+        detail = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Detail/*/*').strip()
+    except ParseError:
+        return "Malformed XML: {}".format(xml_str)
     return "{0} {1}".format(text, detail)
 
 
@@ -372,7 +376,7 @@ def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
               .format(conn_info.username, k_username))
     defer.returnValue(gss_client)
 
-ConnectionInfo = namedtuple(
+class ConnectionInfo(namedtuple(
     'ConnectionInfo', [
         'hostname',
         'auth_type',
@@ -382,8 +386,10 @@ ConnectionInfo = namedtuple(
         'port',
         'connectiontype',
         'keytab',
-        'dcip'])
-
+        'dcip',
+        'timeout'])):
+    def __new__(cls, hostname, auth_type, username, password, scheme, port, connectiontype, keytab, dcip, timeout=60):
+        return super(ConnectionInfo, cls).__new__(cls, hostname, auth_type, username, password, scheme, port, connectiontype, keytab, dcip, timeout)
 
 def verify_hostname(conn_info):
     has_hostname, hostname = _has_get_attr(conn_info, 'hostname')
@@ -429,6 +435,12 @@ def verify_connectiontype(conn_info):
     if not has_connectiontype or not connectiontype:
         raise Exception("connectiontype missing")
 
+def verify_timeout(conn_info):
+    has_timeout, timeout = _has_get_attr(conn_info, 'timeout')
+    if not has_timeout:
+        raise Exception("timeout missing")
+    if not timeout:
+        conn_info.timeout = 60
 
 def verify_conn_info(conn_info):
     verify_hostname(conn_info)
@@ -438,6 +450,7 @@ def verify_conn_info(conn_info):
     verify_scheme(conn_info)
     verify_port(conn_info)
     verify_connectiontype(conn_info)
+    verify_timeout(conn_info)
 
 
 class RequestSender(object):

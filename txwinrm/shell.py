@@ -132,7 +132,8 @@ class SingleShotCommand(object):
     def _run_command(self, shell_id, command_line):
         command_line_elem = _build_command_line_elem(command_line)
         command_elem = yield self._sender.send_request(
-            'command', shell_id=shell_id, command_line_elem=command_line_elem)
+            'command', shell_id=shell_id, command_line_elem=command_line_elem,
+            timeout=self._sender._sender._conn_info.timeout)
         command_id = _find_command_id(command_elem)
         stdout_parts = []
         stderr_parts = []
