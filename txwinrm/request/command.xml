@@ -16,7 +16,7 @@
         <w:OptionSet xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <w:Option Name="WINRS_CONSOLEMODE_STDIN">TRUE</w:Option>
         </w:OptionSet>
-        <w:OperationTimeout>PT60.000S</w:OperationTimeout>
+        <w:OperationTimeout>PT{timeout}.000S</w:OperationTimeout>
     </s:Header>
     <s:Body>{command_line_elem}</s:Body>
 </s:Envelope>
