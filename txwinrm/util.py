@@ -112,9 +112,12 @@ class _StringProducer(object):
 def _parse_error_message(xml_str):
     if not xml_str:
         return ""
-    elem = ET.fromstring(xml_str)
-    text = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Text').strip()
-    detail = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Detail/*/*').strip()
+    try:
+        elem = ET.fromstring(xml_str)
+        text = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Text').strip()
+        detail = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Detail/*/*').strip()
+    except:
+        return "Malformed XML: {}".format(xml_str)
     return "{0} {1}".format(text, detail)
 
 
@@ -382,7 +385,8 @@ ConnectionInfo = namedtuple(
         'port',
         'connectiontype',
         'keytab',
-        'dcip'])
+        'dcip',
+        'timeout'])
 
 
 def verify_hostname(conn_info):
@@ -429,6 +433,12 @@ def verify_connectiontype(conn_info):
     if not has_connectiontype or not connectiontype:
         raise Exception("connectiontype missing")
 
+def verify_timeout(conn_info):
+    has_timeout, timeout = _has_get_attr(conn_info, 'timeout')
+    if not has_timeout:
+        raise Exception("timeout missing")
+    if not timeout:
+        conn_info.timeout = 60
 
 def verify_conn_info(conn_info):
     verify_hostname(conn_info)
@@ -438,6 +448,7 @@ def verify_conn_info(conn_info):
     verify_scheme(conn_info)
     verify_port(conn_info)
     verify_connectiontype(conn_info)
+    verify_timeout(conn_info)
 
 
 class RequestSender(object):
