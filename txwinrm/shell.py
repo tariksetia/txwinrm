@@ -187,7 +187,8 @@ class LongRunningCommand(object):
                   self._shell_id, command_line_elem))
         command_elem = yield self._sender.send_request(
             'command', shell_id=self._shell_id,
-            command_line_elem=command_line_elem)
+            command_line_elem=command_line_elem,
+            timeout=self._sender._sender._conn_info.timeout)
         self._command_id = _find_command_id(command_elem)
 
     @defer.inlineCallbacks
@@ -350,7 +351,8 @@ class RemoteShell(object):
                   self._shell_id, command_line_elem))
         command_elem = yield self._sender.send_request(
             'command', shell_id=self._shell_id,
-            command_line_elem=command_line_elem)
+            command_line_elem=command_line_elem,
+            timeout=self._sender._sender._conn_info.timeout)
         self._command_id = _find_command_id(command_elem)
         self._deferred_receiving = self._start_receiving()
         stdout = []
