@@ -217,6 +217,7 @@ def _parse_args(utility):
     parser.add_argument("--username", "-u")
     parser.add_argument("--dcip", "-i")
     parser.add_argument("--keytab", "-k")
+    parser.add_argument("--password", "-p")
     utility.add_args(parser)
     args = parser.parse_args()
     if not args.config:
@@ -228,7 +229,9 @@ def _parse_args(utility):
             sys.exit(1)
         if args.remote:
             hostname, scheme, port = _parse_remote(args.remote)
-            password = getpass()
+            password = args.password
+            if not password:
+                password = getpass()
             connectiontype = 'Keep-Alive'
             args.conn_info = ConnectionInfo(
                 hostname, args.authentication, args.username, password, scheme,
