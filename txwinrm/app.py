@@ -170,15 +170,15 @@ def _parse_config_file(filename, utility):
     parser = RawConfigParser(allow_no_value=True)
     parser.read(filename)
     creds = {}
-    index = dict(authentication=0, username=1)
+    index = dict(authentication=0, username=1, password=2)
     for key, value in parser.items('credentials'):
         k1, k2 = key.split('.')
         if k1 not in creds:
             creds[k1] = [None, None, None]
         creds[k1][index[k2]] = value
-        if k2 == 'username':
-            creds[k1][2] = getpass('{0} password ({1} credentials):'
-                                   .format(value, k1))
+    if not creds[k1][2]:
+        creds[k1][2] = getpass('{0} password ({1} credentials):'
+                               .format(value, k1))
     conn_infos = []
     for remote, cred_key in parser.items('remotes'):
         auth_type, username, password = creds[cred_key]
