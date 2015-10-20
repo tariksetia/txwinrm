@@ -23,7 +23,7 @@ from twisted.internet.ssl import ClientContextFactory
 from twisted.web.http_headers import Headers
 from . import constants as c
 
-from .krb5 import kinit, ccname
+from .krb5 import kinit, ccname, add_trusted_realm
 
 # ZEN-15434 lazy import to avoid segmentation fault during install
 kerberos = None
@@ -181,7 +181,7 @@ class AuthGSSClient(object):
         1  : GSSAPI step complete, or function return OK
     """
 
-    def __init__(self, service, username, password, dcip):
+    def __init__(self, service, conn_info):
         """
         @param service: a string containing the service principal in the form
             'type@fqdn' (e.g. 'imap@mail.apple.com').
@@ -192,14 +192,17 @@ class AuthGSSClient(object):
         if not kerberos:
             import kerberos
         self._service = service
-        self._username = username
-        self._password = password
-        self._dcip = dcip
-        gssflags = kerberos.GSS_C_CONF_FLAG|kerberos.GSS_C_MUTUAL_FLAG|kerberos.GSS_C_SEQUENCE_FLAG|kerberos.GSS_C_INTEG_FLAG
+        self._conn_info = conn_info
+        self._username = conn_info.username
+        self._password = conn_info.password
+        self._dcip = conn_info.dcip
+        gssflags = kerberos.GSS_C_CONF_FLAG | kerberos.GSS_C_MUTUAL_FLAG | kerberos.GSS_C_SEQUENCE_FLAG | kerberos.GSS_C_INTEG_FLAG
 
-        os.environ['KRB5CCNAME'] = ccname(username)
+        os.environ['KRB5CCNAME'] = ccname(conn_info.username)
+        if conn_info.trusted_realm and conn_info.trusted_kdc:
+            add_trusted_realm(conn_info.trusted_realm, conn_info.trusted_kdc)
         if hasattr(kerberos, 'authGSSClientWrapIov'):
-            result_code, self._context = kerberos.authGSSClientInit(service,gssflags=gssflags)
+            result_code, self._context = kerberos.authGSSClientInit(service, gssflags=gssflags)
         else:
             result_code, self._context = kerberos.authGSSClientInit(service)
         if result_code != kerberos.AUTH_GSS_COMPLETE:
@@ -272,7 +275,7 @@ class AuthGSSClient(object):
         ebody = base64.b64encode(body)
         # wrap it up
         try:
-            rc,pad_len = kerberos.authGSSClientWrapIov(self._context,ebody,1)
+            rc, pad_len = kerberos.authGSSClientWrapIov(self._context, ebody, 1)
             if rc is not kerberos.AUTH_GSS_COMPLETE:
                 log.debug("Unable to encrypt message body")
                 return
@@ -288,8 +291,8 @@ class AuthGSSClient(object):
         # decode wrapped request
         payload = bytes(base64.b64decode(ewrap))
         # add carriage returns to body
-        body = _BODY.replace('\n','\r\n')
-        body = bytes(body.format(original_length=orig_len+pad_len,emsg=payload))
+        body = _BODY.replace('\n', '\r\n')
+        body = bytes(body.format(original_length=orig_len+pad_len, emsg=payload))
         return body
 
     def decrypt_body(self, body):
@@ -299,7 +302,7 @@ class AuthGSSClient(object):
         except ValueError:
             # Unencrypted data, return body
             return body
-        b_end = body.index("--Encrypted Boundary",b_start)
+        b_end = body.index("--Encrypted Boundary", b_start)
         ebody = body[b_start:b_end]
         ebody = base64.b64encode(ebody)
         try:
@@ -318,14 +321,19 @@ class AuthGSSClient(object):
         kerberos.authGSSClientClean(self._context)
         self._context = None
 
+
 def get_auth_details(auth_header=''):
     auth_details = ''
     for field in auth_header.split(','):
-        kind, details = field.strip().split(' ', 1)
-        if kind.lower() == 'kerberos':
-            auth_details = details.strip()
-            break
+        try:
+            kind, details = field.strip().split(' ', 1)
+            if kind.lower() == 'kerberos':
+                auth_details = details.strip()
+                break
+        except ValueError:
+            continue
     return auth_details
+
 
 @defer.inlineCallbacks
 def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
@@ -333,9 +341,7 @@ def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
     if gss_client is None:
         gss_client = AuthGSSClient(
             service,
-            conn_info.username,
-            conn_info.password,
-            conn_info.dcip)
+            conn_info)
 
     base64_client_data = yield gss_client.get_base64_client_data()
     auth = 'Kerberos {0}'.format(base64_client_data)
@@ -351,8 +357,8 @@ def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
             if auth_details:
                 gss_client._step(auth_details)
         except kerberos.GSSError as e:
-            msg ="HTTP Unauthorized received on kerberos initialization.  "\
-                "Kerberos error code {0}: {1}.".format(e.args[1][1],e.args[1][0])
+            msg = "HTTP Unauthorized received on kerberos initialization.  "\
+                "Kerberos error code {0}: {1}.".format(e.args[1][1], e.args[1][0])
             raise Exception(msg)
         raise UnauthorizedError(
             "HTTP Unauthorized received on initial kerberos request.  Check username and password")
@@ -376,6 +382,7 @@ def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
               .format(conn_info.username, k_username))
     defer.returnValue(gss_client)
 
+
 class ConnectionInfo(namedtuple(
     'ConnectionInfo', [
         'hostname',
@@ -387,9 +394,17 @@ class ConnectionInfo(namedtuple(
         'connectiontype',
         'keytab',
         'dcip',
-        'timeout'])):
-    def __new__(cls, hostname, auth_type, username, password, scheme, port, connectiontype, keytab, dcip, timeout=60):
-        return super(ConnectionInfo, cls).__new__(cls, hostname, auth_type, username, password, scheme, port, connectiontype, keytab, dcip, timeout)
+        'timeout',
+        'trusted_realm',
+        'trusted_kdc'])):
+    def __new__(cls, hostname, auth_type, username, password, scheme, port,
+                connectiontype, keytab, dcip, timeout=60, trusted_realm='', trusted_kdc=''):
+        return super(ConnectionInfo, cls).__new__(cls, hostname, auth_type,
+                                                  username, password, scheme,
+                                                  port, connectiontype, keytab,
+                                                  dcip, timeout,
+                                                  trusted_realm, trusted_kdc)
+
 
 def verify_hostname(conn_info):
     has_hostname, hostname = _has_get_attr(conn_info, 'hostname')

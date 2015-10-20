@@ -284,3 +284,12 @@ def ccname(username):
     Return KRB5CCNAME value for username.
     '''
     return config.get_ccname(username)
+
+
+def add_trusted_realm(realm, kdc):
+    '''
+    Add a trusted realm for cross realm authentication
+    '''
+    trusted_realm = realm.upper()
+    global config
+    config.add_kdc(trusted_realm, kdc)
