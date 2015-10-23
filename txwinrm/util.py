@@ -53,6 +53,8 @@ OriginalContent: type=application/soap+xml;charset=UTF-8;Length={original_length
 Content-Type: application/octet-stream
 {emsg}--Encrypted Boundary
 """
+
+
 def _has_get_attr(obj, attr_name):
     attr_value = getattr(obj, attr_name, _MARKER)
     if attr_value is _MARKER:
@@ -68,6 +70,7 @@ class MyWebClientContextFactory(object):
     def getContext(self, hostname, port):
         return self._options.getContext()
 
+
 def _get_agent():
     context_factory = MyWebClientContextFactory()
     try:
@@ -77,11 +80,12 @@ def _get_agent():
         pool.maxPersistentPerHost = _MAX_PERSISTENT_PER_HOST
         pool.cachedConnectionTimeout = _CACHED_CONNECTION_TIMEOUT
         agent = Agent(reactor, context_factory,
-                       connectTimeout=_CONNECT_TIMEOUT, pool=pool)
+                      connectTimeout=_CONNECT_TIMEOUT, pool=pool)
     except ImportError:
         from _zenclient import ZenAgent
         agent = ZenAgent(reactor, context_factory, persistent=True, maxConnectionsPerHostName=1)
     return agent
+
 
 class _StringProducer(object):
     """
@@ -109,6 +113,7 @@ class _StringProducer(object):
 
     def stopProducing(self):
         pass
+
 
 def _parse_error_message(xml_str):
     if not xml_str:
@@ -245,7 +250,9 @@ class AuthGSSClient(object):
                 elif msg == 'Server not found in Kerberos database':
                     raise Exception(msg+': '+self._service)
                 log.debug('{0}. Calling kinit.'.format(msg))
-                yield kinit(self._username, self._password, self._dcip)
+                kinit_result = yield kinit(self._username, self._password, self._dcip)
+                if kinit_result:
+                    raise Exception(kinit_result)
 
         if result_code != kerberos.AUTH_GSS_CONTINUE:
             raise Exception('kerberos authGSSClientStep failed ({0}).'
