@@ -225,6 +225,10 @@ class KinitProcessProtocol(ProcessProtocol):
         self._password = password
         self.d = defer.Deferred()
         self._data = ''
+        self._error = ''
+
+    def errReceived(self, data):
+        self._error += data
 
     def outReceived(self, data):
         self._data += data
@@ -233,7 +237,7 @@ class KinitProcessProtocol(ProcessProtocol):
             self._data = ''
 
     def processEnded(self, reason):
-        self.d.callback(None)
+        self.d.callback(self._error if self._error else None)
 
 
 @defer.inlineCallbacks
@@ -276,7 +280,8 @@ def kinit(username, password, kdc):
 
     reactor.spawnProcess(protocol, kinit, kinit_args, kinit_env)
 
-    yield protocol.d
+    results = yield protocol.d
+    defer.returnValue(results)
 
 
 def ccname(username):
