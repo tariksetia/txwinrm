@@ -88,16 +88,15 @@ class WinrmClient(object):
                 request_template_name = 'pull'
             else:
                 raise Exception("Reached max requests per enumeration.")
-        except ResponseFailed as e:
-            for reason in e.reasons:
-                log.error('{0} {1}'.format(self._hostname, reason.value))
+        except (ResponseFailed, RequestError, Exception) as e:
+            yield self._sender.close_connections()
+            if isinstance(e, ResponseFailed):
+                for reason in e.reasons:
+                    log.error('{0} {1}'.format(self._hostname, reason.value))
+            else:
+                log.debug('{0} {1}'.format(self._hostname, e))
             raise
-        except RequestError as e:
-            log.debug('{0} {1}'.format(self._hostname, e))
-            raise
-        except Exception as e:
-            log.error('{0} {1}'.format(self._hostname, e))
-            raise
+        yield self._sender.close_connections()
         defer.returnValue(items)
 
 
