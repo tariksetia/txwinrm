@@ -121,6 +121,7 @@ class SingleShotCommand(object):
         shell_id = yield self._create_shell()
         cmd_response = yield self._run_command(shell_id, command_line)
         yield self._delete_shell(shell_id)
+        yield self._sender.close_connections()
         defer.returnValue(cmd_response)
 
     @defer.inlineCallbacks
@@ -184,7 +185,7 @@ class LongRunningCommand(object):
         command_line_elem = _build_command_line_elem(command_line)
         log.debug('LongRunningCommand run_command: sending command request '
                   '(shell_id={0}, command_line_elem={1})'.format(
-                  self._shell_id, command_line_elem))
+                    self._shell_id, command_line_elem))
         command_elem = yield self._sender.send_request(
             'command', shell_id=self._shell_id,
             command_line_elem=command_line_elem,
@@ -218,6 +219,7 @@ class LongRunningCommand(object):
             command_id=self._command_id,
             signal_code=c.SHELL_SIGNAL_TERMINATE)
         yield self._sender.send_request('delete', shell_id=self._shell_id)
+        yield self._sender.close_connections()
         defer.returnValue(CommandResponse(stdout, stderr, self._exit_code))
 
 
@@ -348,7 +350,7 @@ class RemoteShell(object):
         command_line_elem = _build_command_line_elem('cmd')
         log.debug('RemoteShell create: sending command request (shell_id={0}, '
                   'command_line_elem={1})'.format(
-                  self._shell_id, command_line_elem))
+                    self._shell_id, command_line_elem))
         command_elem = yield self._sender.send_request(
             'command', shell_id=self._shell_id,
             command_line_elem=command_line_elem,
