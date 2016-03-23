@@ -588,16 +588,14 @@ class RequestSender(object):
         # close connections
         # return a Deferred()
         if self.agent and hasattr(self.agent, 'closeCachedConnections'):
-            # twisted 11
-            d = defer.Deferred()
-            d.callback(self.agent.closeCachedConnections())
-            return d
+            # twisted 11 has no return and is part of the Agent
+            return defer.succeed(self.agent.closeCachedConnections())
         elif self.agent:
-            # twisted 12
+            # twisted 12 returns a Deferred
             return self.agent.pool.closeCachedConnections()
         else:
             # no agent
-            return defer.Deferred()
+            return defer.succeed(None)
 
 
 class _StringProtocol(Protocol):
