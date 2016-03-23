@@ -584,6 +584,21 @@ class RequestSender(object):
                 response.code, message))
         defer.returnValue(response)
 
+    def close_connections(self):
+        # close connections
+        # return a Deferred()
+        if self.agent and hasattr(self.agent, 'closeCachedConnections'):
+            # twisted 11
+            d = defer.Deferred()
+            d.callback(self.agent.closeCachedConnections())
+            return d
+        elif self.agent:
+            # twisted 12
+            return self.agent.pool.closeCachedConnections()
+        else:
+            # no agent
+            return defer.Deferred()
+
 
 class _StringProtocol(Protocol):
 
@@ -623,6 +638,9 @@ class EtreeRequestSender(object):
             except:
                 log.debug('Could not prettify response XML: "{0}"'.format(xml_str))
         defer.returnValue(ET.fromstring(xml_str))
+
+    def close_connections(self):
+        yield self._sender.close_connections()
 
 
 def create_etree_request_sender(conn_info):
