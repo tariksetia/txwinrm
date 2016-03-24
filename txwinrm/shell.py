@@ -16,6 +16,7 @@ from itertools import izip
 from pprint import pformat
 from cStringIO import StringIO
 from twisted.internet import reactor, defer, task
+from twisted.internet.error import TimeoutError
 from xml.etree import cElementTree as ET
 from . import constants as c
 from .util import create_etree_request_sender, get_datetime
@@ -119,7 +120,10 @@ class SingleShotCommand(object):
                 .exit_code = <int>
         """
         shell_id = yield self._create_shell()
-        cmd_response = yield self._run_command(shell_id, command_line)
+        try:
+            cmd_response = yield self._run_command(shell_id, command_line)
+        except TimeoutError:
+            yield self._sender.close_connections()
         yield self._delete_shell(shell_id)
         yield self._sender.close_connections()
         defer.returnValue(cmd_response)
@@ -177,6 +181,10 @@ class LongRunningCommand(object):
         self._command_id = None
         self._exit_code = None
 
+    def __del__(self):
+        # in case of network errors
+        yield self._sender.close_connections()
+
     @defer.inlineCallbacks
     def start(self, command_line):
         log.debug("LongRunningCommand run_command: {0}".format(command_line))
@@ -186,18 +194,26 @@ class LongRunningCommand(object):
         log.debug('LongRunningCommand run_command: sending command request '
                   '(shell_id={0}, command_line_elem={1})'.format(
                     self._shell_id, command_line_elem))
-        command_elem = yield self._sender.send_request(
-            'command', shell_id=self._shell_id,
-            command_line_elem=command_line_elem,
-            timeout=self._sender._sender._conn_info.timeout)
+        try:
+            command_elem = yield self._sender.send_request(
+                'command', shell_id=self._shell_id,
+                command_line_elem=command_line_elem,
+                timeout=self._sender._sender._conn_info.timeout)
+        except TimeoutError:
+            yield self._sender.close_connections()
+            raise
         self._command_id = _find_command_id(command_elem)
 
     @defer.inlineCallbacks
     def receive(self):
-        receive_elem = yield self._sender.send_request(
-            'receive',
-            shell_id=self._shell_id,
-            command_id=self._command_id)
+        try:
+            receive_elem = yield self._sender.send_request(
+                'receive',
+                shell_id=self._shell_id,
+                command_id=self._command_id)
+        except TimeoutError:
+            yield self._sender.close_connections()
+            raise
         stdout_parts = _find_stream(receive_elem, self._command_id, 'stdout')
         stderr_parts = _find_stream(receive_elem, self._command_id, 'stderr')
         self._exit_code = _find_exit_code(receive_elem, self._command_id)
@@ -212,7 +228,11 @@ class LongRunningCommand(object):
             shell_id=self._shell_id,
             command_id=self._command_id,
             signal_code=c.SHELL_SIGNAL_CTRL_C)
-        stdout, stderr = yield self.receive()
+        try:
+            stdout, stderr = yield self.receive()
+        except TimeoutError:
+            # close_connections done in receive()
+            pass
         yield self._sender.send_request(
             'signal',
             shell_id=self._shell_id,
