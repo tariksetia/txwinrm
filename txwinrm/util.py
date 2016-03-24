@@ -637,8 +637,10 @@ class EtreeRequestSender(object):
                 log.debug('Could not prettify response XML: "{0}"'.format(xml_str))
         defer.returnValue(ET.fromstring(xml_str))
 
+    @defer.inlineCallbacks
     def close_connections(self):
-        yield self._sender.close_connections()
+        closed = yield self._sender.close_connections()
+        defer.returnValue(closed)
 
 
 def create_etree_request_sender(conn_info):
