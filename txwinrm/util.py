@@ -592,7 +592,7 @@ class RequestSender(object):
             return defer.succeed(self.agent.closeCachedConnections())
         elif self.agent:
             # twisted 12 returns a Deferred
-            return self.agent.pool.closeCachedConnections()
+            return self.agent._pool.closeCachedConnections()
         else:
             # no agent
             return defer.succeed(None)
