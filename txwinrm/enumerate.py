@@ -89,7 +89,6 @@ class WinrmClient(object):
             else:
                 raise Exception("Reached max requests per enumeration.")
         except (ResponseFailed, RequestError, Exception) as e:
-            yield self._sender.close_connections()
             if isinstance(e, ResponseFailed):
                 for reason in e.reasons:
                     log.error('{0} {1}'.format(self._hostname, reason.value))
