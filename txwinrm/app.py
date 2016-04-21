@@ -9,6 +9,7 @@
 
 import sys
 import logging
+import socket
 from getpass import getpass
 from urlparse import urlparse
 from argparse import ArgumentParser
@@ -218,6 +219,7 @@ def _parse_args(utility):
     parser.add_argument("--dcip", "-i")
     parser.add_argument("--keytab", "-k")
     parser.add_argument("--password", "-p")
+    parser.add_argument("--ipaddress", "-s")
     utility.add_args(parser)
     args = parser.parse_args()
     if not args.config:
@@ -232,10 +234,12 @@ def _parse_args(utility):
             password = args.password
             if not password:
                 password = getpass()
+            if not args.ipaddress:
+                args.ipaddress = socket.gethostbyname(hostname)
             connectiontype = 'Keep-Alive'
             args.conn_info = ConnectionInfo(
                 hostname, args.authentication, args.username, password, scheme,
-                port, connectiontype, args.keytab, args.dcip)
+                port, connectiontype, args.keytab, args.dcip, ipaddress=args.ipaddress)
             try:
                 verify_conn_info(args.conn_info)
             except Exception as e:
