@@ -407,6 +407,8 @@ class ConnectionInfo(namedtuple(
         'ipaddress'])):
     def __new__(cls, hostname, auth_type, username, password, scheme, port,
                 connectiontype, keytab, dcip, timeout=60, trusted_realm='', trusted_kdc='', ipaddress=''):
+        if not ipaddress:
+            ipaddress = hostname
         return super(ConnectionInfo, cls).__new__(cls, hostname, auth_type,
                                                   username, password, scheme,
                                                   port, connectiontype, keytab,

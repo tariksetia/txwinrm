@@ -9,7 +9,6 @@
 
 import sys
 import logging
-import socket
 from getpass import getpass
 from urlparse import urlparse
 from argparse import ArgumentParser
@@ -234,8 +233,6 @@ def _parse_args(utility):
             password = args.password
             if not password:
                 password = getpass()
-            if not args.ipaddress:
-                args.ipaddress = socket.gethostbyname(hostname)
             connectiontype = 'Keep-Alive'
             args.conn_info = ConnectionInfo(
                 hostname, args.authentication, args.username, password, scheme,
