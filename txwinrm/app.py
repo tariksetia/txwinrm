@@ -218,6 +218,7 @@ def _parse_args(utility):
     parser.add_argument("--dcip", "-i")
     parser.add_argument("--keytab", "-k")
     parser.add_argument("--password", "-p")
+    parser.add_argument("--ipaddress", "-s")
     utility.add_args(parser)
     args = parser.parse_args()
     if not args.config:
@@ -235,7 +236,7 @@ def _parse_args(utility):
             connectiontype = 'Keep-Alive'
             args.conn_info = ConnectionInfo(
                 hostname, args.authentication, args.username, password, scheme,
-                port, connectiontype, args.keytab, args.dcip)
+                port, connectiontype, args.keytab, args.dcip, ipaddress=args.ipaddress)
             try:
                 verify_conn_info(args.conn_info)
             except Exception as e:

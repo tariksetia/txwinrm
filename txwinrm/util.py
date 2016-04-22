@@ -403,20 +403,29 @@ class ConnectionInfo(namedtuple(
         'dcip',
         'timeout',
         'trusted_realm',
-        'trusted_kdc'])):
+        'trusted_kdc',
+        'ipaddress'])):
     def __new__(cls, hostname, auth_type, username, password, scheme, port,
-                connectiontype, keytab, dcip, timeout=60, trusted_realm='', trusted_kdc=''):
+                connectiontype, keytab, dcip, timeout=60, trusted_realm='', trusted_kdc='', ipaddress=''):
+        if not ipaddress:
+            ipaddress = hostname
         return super(ConnectionInfo, cls).__new__(cls, hostname, auth_type,
                                                   username, password, scheme,
                                                   port, connectiontype, keytab,
                                                   dcip, timeout,
-                                                  trusted_realm, trusted_kdc)
+                                                  trusted_realm, trusted_kdc, ipaddress)
 
 
 def verify_hostname(conn_info):
     has_hostname, hostname = _has_get_attr(conn_info, 'hostname')
     if not has_hostname or not hostname:
         raise Exception("hostname is not resolvable")
+
+
+def verify_ipaddress(conn_info):
+    has_ipaddress, ipaddress = _has_get_attr(conn_info, 'ipaddress')
+    if not has_ipaddress or not ipaddress:
+        raise Exception("ipaddress missing")
 
 
 def verify_auth_type(conn_info):
@@ -457,6 +466,7 @@ def verify_connectiontype(conn_info):
     if not has_connectiontype or not connectiontype:
         raise Exception("connectiontype missing")
 
+
 def verify_timeout(conn_info):
     has_timeout, timeout = _has_get_attr(conn_info, 'timeout')
     if not has_timeout:
@@ -464,8 +474,10 @@ def verify_timeout(conn_info):
     if not timeout:
         conn_info.timeout = 60
 
+
 def verify_conn_info(conn_info):
     verify_hostname(conn_info)
+    verify_ipaddress(conn_info)
     verify_auth_type(conn_info)
     verify_username(conn_info)
     verify_password(conn_info)
@@ -488,7 +500,7 @@ class RequestSender(object):
 
     @defer.inlineCallbacks
     def _get_url_and_headers(self):
-        url = "{c.scheme}://{c.hostname}:{c.port}/wsman".format(c=self._conn_info)
+        url = "{c.scheme}://{c.ipaddress}:{c.port}/wsman".format(c=self._conn_info)
         if self._conn_info.auth_type == 'basic':
             headers = Headers(_CONTENT_TYPE)
             headers.addRawHeader('Connection', self._conn_info.connectiontype)
