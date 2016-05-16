@@ -45,14 +45,21 @@ _REQUEST_TEMPLATES = {}
 _CONTENT_TYPE = {'Content-Type': ['application/soap+xml;charset=UTF-8']}
 _MAX_KERBEROS_RETRIES = 3
 _MARKER = object()
-_ENCRYPTED_CONTENT_TYPE={"Content-Type" : ["multipart/encrypted;protocol=\"application/HTTP-Kerberos-session-encrypted\";boundary=\"Encrypted Boundary\""]}
-_BODY="""--Encrypted Boundary
+_ENCRYPTED_CONTENT_TYPE = {
+    "Content-Type": [
+        "multipart/encrypted;"
+        "protocol=\"application/HTTP-Kerberos-session-encrypted\";"
+        "boundary=\"Encrypted Boundary\""]}
+_BODY = """--Encrypted Boundary
 Content-Type: application/HTTP-Kerberos-session-encrypted
 OriginalContent: type=application/soap+xml;charset=UTF-8;Length={original_length}
 --Encrypted Boundary
 Content-Type: application/octet-stream
 {emsg}--Encrypted Boundary
 """
+
+_KRB_INTERNAL_CACHE_ERR = 'Internal credentials cache error while storing '\
+    'credentials while getting initial credentials'
 
 
 def _has_get_attr(obj, attr_name):
@@ -248,11 +255,14 @@ class AuthGSSClient(object):
                 if msg == 'Cannot determine realm for numeric host address':
                     raise Exception(msg)
                 elif msg == 'Server not found in Kerberos database':
-                    raise Exception(msg+': '+self._service)
+                    raise Exception(msg + ': ' + self._service)
                 log.debug('{0}. Calling kinit.'.format(msg))
                 kinit_result = yield kinit(self._username, self._password, self._dcip)
                 if kinit_result:
-                    raise Exception(kinit_result)
+                    # this error is ok.  it just means more
+                    # than one process is calling kinit
+                    if _KRB_INTERNAL_CACHE_ERR not in kinit_result:
+                        raise Exception(kinit_result)
 
         if result_code != kerberos.AUTH_GSS_CONTINUE:
             raise Exception('kerberos authGSSClientStep failed ({0}).'

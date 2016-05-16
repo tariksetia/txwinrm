@@ -235,6 +235,10 @@ class KinitProcessProtocol(ProcessProtocol):
         if 'Password for' in self._data and ':' in self._data:
             self.transport.write('{0}\n'.format(self._password))
             self._data = ''
+        elif 'Password expired' in data:
+            # strip off '\nEnter new password:'
+            self._error = data.split('\n')[0]
+            self.transport.signalProcess('KILL')
 
     def processEnded(self, reason):
         self.d.callback(self._error if self._error else None)
