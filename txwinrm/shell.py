@@ -181,10 +181,6 @@ class LongRunningCommand(object):
         self._command_id = None
         self._exit_code = None
 
-    def __del__(self):
-        # in case of network errors
-        yield self._sender.close_connections()
-
     @defer.inlineCallbacks
     def start(self, command_line):
         log.debug("LongRunningCommand run_command: {0}".format(command_line))
@@ -239,7 +235,6 @@ class LongRunningCommand(object):
             command_id=self._command_id,
             signal_code=c.SHELL_SIGNAL_TERMINATE)
         yield self._sender.send_request('delete', shell_id=self._shell_id)
-        yield self._sender.close_connections()
         defer.returnValue(CommandResponse(stdout, stderr, self._exit_code))
 
 

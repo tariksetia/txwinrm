@@ -21,6 +21,7 @@ from twisted.internet.protocol import Protocol
 from twisted.web.client import Agent
 from twisted.internet.ssl import ClientContextFactory
 from twisted.web.http_headers import Headers
+from twisted.internet.threads import deferToThread
 from . import constants as c
 
 from .krb5 import kinit, ccname, add_trusted_realm
@@ -237,7 +238,7 @@ class AuthGSSClient(object):
         @return:          a result code
         """
         log.debug('GSSAPI step challenge="{0}"'.format(challenge))
-        return kerberos.authGSSClientStep(self._context, challenge)
+        return deferToThread(kerberos.authGSSClientStep, self._context, challenge)
 
     @defer.inlineCallbacks
     def get_base64_client_data(self, challenge=''):
@@ -248,7 +249,7 @@ class AuthGSSClient(object):
         result_code = None
         for i in xrange(_MAX_KERBEROS_RETRIES):
             try:
-                result_code = self._step(challenge)
+                result_code = yield self._step(challenge)
                 break
             except kerberos.GSSError as e:
                 msg = e.args[1][0]
@@ -270,6 +271,7 @@ class AuthGSSClient(object):
         base64_client_data = kerberos.authGSSClientResponse(self._context)
         defer.returnValue(base64_client_data)
 
+    @defer.inlineCallbacks
     def get_username(self, challenge):
         """
         Get the user name of the principal authenticated via the now complete
@@ -278,12 +280,12 @@ class AuthGSSClient(object):
         @param challenge: a string containing the base64-encoded server data
         @return:          a string containing the user name.
         """
-        result_code = self._step(challenge)
+        result_code = yield self._step(challenge)
         if result_code != kerberos.AUTH_GSS_COMPLETE:
             raise Exception('kerberos authGSSClientStep failed ({0}). '
                             'challenge={1}'
                             .format(result_code, challenge))
-        return kerberos.authGSSClientUserName(self._context)
+        defer.returnValue(kerberos.authGSSClientUserName(self._context))
 
     def encrypt_body(self, body):
         # get original length of body. wrap will encrypt in place
@@ -309,13 +311,13 @@ class AuthGSSClient(object):
         payload = bytes(base64.b64decode(ewrap))
         # add carriage returns to body
         body = _BODY.replace('\n', '\r\n')
-        body = bytes(body.format(original_length=orig_len+pad_len, emsg=payload))
+        body = bytes(body.format(original_length=orig_len + pad_len, emsg=payload))
         return body
 
     def decrypt_body(self, body):
         try:
             b_start = body.index("Content-Type: application/octet-stream") + \
-                      len("Content-Type: application/octet-stream\r\n")
+                len("Content-Type: application/octet-stream\r\n")
         except ValueError:
             # Unencrypted data, return body
             return body
@@ -354,7 +356,7 @@ def get_auth_details(auth_header=''):
 
 @defer.inlineCallbacks
 def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
-    service = '{0}@{1}'.format(conn_info.scheme.upper(), conn_info.hostname)
+    service = '{0}@{1}'.format(conn_info.service.upper(), conn_info.hostname)
     if gss_client is None:
         gss_client = AuthGSSClient(
             service,
@@ -372,7 +374,7 @@ def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
     if response.code == httplib.UNAUTHORIZED:
         try:
             if auth_details:
-                gss_client._step(auth_details)
+                yield gss_client._step(auth_details)
         except kerberos.GSSError as e:
             msg = "HTTP Unauthorized received on kerberos initialization.  "\
                 "Kerberos error code {0}: {1}.".format(e.args[1][1], e.args[1][0])
@@ -394,7 +396,7 @@ def _authenticate_with_kerberos(conn_info, url, agent, gss_client=None):
         raise Exception(
             'negotiate not found in WWW-Authenticate header: {0}'
             .format(auth_header))
-    k_username = gss_client.get_username(auth_details)
+    k_username = yield gss_client.get_username(auth_details)
     log.debug('kerberos auth successful for user: {0} / {1} '
               .format(conn_info.username, k_username))
     defer.returnValue(gss_client)
@@ -414,16 +416,19 @@ class ConnectionInfo(namedtuple(
         'timeout',
         'trusted_realm',
         'trusted_kdc',
-        'ipaddress'])):
+        'ipaddress',
+        'service'])):
     def __new__(cls, hostname, auth_type, username, password, scheme, port,
-                connectiontype, keytab, dcip, timeout=60, trusted_realm='', trusted_kdc='', ipaddress=''):
+                connectiontype, keytab, dcip, timeout=60, trusted_realm='', trusted_kdc='', ipaddress='', service=''):
         if not ipaddress:
             ipaddress = hostname
+        if not service:
+            service = scheme
         return super(ConnectionInfo, cls).__new__(cls, hostname, auth_type,
                                                   username, password, scheme,
                                                   port, connectiontype, keytab,
                                                   dcip, timeout,
-                                                  trusted_realm, trusted_kdc, ipaddress)
+                                                  trusted_realm, trusted_kdc, ipaddress, service)
 
 
 def verify_hostname(conn_info):
@@ -463,6 +468,17 @@ def verify_scheme(conn_info):
         raise Exception(
             "scheme must be http or https: {0}"
             .format(scheme))
+
+
+def verify_service(conn_info):
+    has_service, service = _has_get_attr(conn_info, 'service')
+    if not has_service:
+        # if not supplied, default to scheme
+        has_service, service = _has_get_attr(conn_info, 'scheme')
+    if not has_service or service not in ['http', 'https', 'wsman']:
+        raise Exception(
+            "service must be http, https, or wsman: {0}"
+            .format(service))
 
 
 def verify_port(conn_info):
@@ -585,7 +601,7 @@ class RequestSender(object):
                     auth_details = get_auth_details(auth_header)
                     try:
                         if auth_details:
-                            self.gssclient._step(auth_details)
+                            yield self.gssclient._step(auth_details)
                     except kerberos.GSSError as e:
                         msg ="HTTP Unauthorized received.  "\
                         "Kerberos error code {0}: {1}.".format(e.args[1][1],e.args[1][0])

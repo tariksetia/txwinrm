@@ -12,8 +12,8 @@ import cmd
 from pprint import pprint
 from twisted.internet import reactor, defer, task, threads
 from . import app
-from .shell import create_long_running_command, create_single_shot_command, \
-    create_remote_shell
+from .shell import create_remote_shell
+from .WinRMClient import SingleCommandClient, LongCommandClient
 
 
 def print_output(stdout, stderr):
@@ -57,7 +57,7 @@ class WinrsCmd(cmd.Cmd):
 @defer.inlineCallbacks
 def long_running_main(args):
     try:
-        client = create_long_running_command(args.conn_info)
+        client = LongCommandClient(args.conn_info)
         yield client.start(args.command)
         for i in xrange(5):
             stdout, stderr = yield task.deferLater(
@@ -102,7 +102,7 @@ def batch_main(args):
 @defer.inlineCallbacks
 def single_shot_main(args):
     try:
-        client = create_single_shot_command(args.conn_info)
+        client = SingleCommandClient(args.conn_info)
         results = yield client.run_command(args.command)
         pprint(results)
     finally:
@@ -124,11 +124,11 @@ class WinrsUtility(object):
     def add_args(self, parser):
         parser.add_argument(
             "kind", nargs='?', default="interactive",
-            choices=["interactive", "single", "batch", "long"])
+            choices=["interactive", "single", "batch", "long", "multiple"])
         parser.add_argument("--command", "-x")
 
     def check_args(self, args):
-        if not args.command and args.kind in ["single", "batch", "long"]:
+        if not args.command and args.kind in ["single", "batch", "long", "multiple"]:
             print >>sys.stderr, \
                 "ERROR: {0} requires that you specify a command."
             return False
@@ -144,6 +144,7 @@ class WinrsUtility(object):
 
     def adapt_args_to_config(self, args, config):
         pass
+
 
 if __name__ == '__main__':
     app.main(WinrsUtility())
