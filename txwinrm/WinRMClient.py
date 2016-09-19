@@ -96,6 +96,9 @@ class WinRMSession(Session):
     def is_kerberos(self):
         return self._conn_info.auth_type == 'kerberos'
 
+    def decrypt_body(self, body):
+        return self._gssclient.decrypt_body(body)
+
     def _set_headers(self):
         if self._headers:
             return self._headers
@@ -248,6 +251,9 @@ class WinRMClient(object):
 
     def is_kerberos(self):
         return self._conn_info.auth_type == 'kerberos'
+
+    def decrypt_body(self, body):
+        return self._session.decrypt_body(body)
 
     @inlineCallbacks
     def _create_shell(self):
@@ -432,9 +438,7 @@ class EnumerateClient(WinRMClient):
         """
         Runs a remote WQL query.
         """
-        if self._session is None:
-            yield self.session_manager.init_connection(self, WinRMSession)
-            self._session = self.session_manager.get_connection(self.key)
+        self.init_connection()
         request_template_name = 'enumerate'
         enumeration_context = None
         items = []
