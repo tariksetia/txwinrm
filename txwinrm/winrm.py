@@ -14,7 +14,7 @@ Use twisted web client to enumerate/pull WQL query.
 import sys
 from twisted.internet import defer
 from . import app
-from .enumerate import create_winrm_client
+from .WinRMClient import EnumerateClient
 
 
 class WinrmStrategy(object):
@@ -49,7 +49,7 @@ class WinrmStrategy(object):
         include_header = len(config.conn_infos) > 1
         ds = []
         for conn_info in good_conn_infos:
-            client = create_winrm_client(conn_info)
+            client = EnumerateClient(conn_info)
             for wql in config.wqls:
                 d = client.enumerate(wql)
                 d.addCallback(
