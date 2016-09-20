@@ -320,7 +320,7 @@ class SingleCommandClient(WinRMClient):
             cmd_response = yield self._session.sem.run(self.run_single_command,
                                                        command_line)
         except Exception:
-            self.close_connection()
+            yield self.close_connection()
         returnValue(cmd_response)
 
     @inlineCallbacks
@@ -388,7 +388,7 @@ class LongCommandClient(WinRMClient):
             command_elem = yield self._send_command(self._shell_id,
                                                     command_line)
         except TimeoutError:
-            yield self.session_manager.close_connection(self)
+            yield self.close_connection()
             raise
         self._command_id = _find_command_id(command_elem)
         returnValue(None)
@@ -398,7 +398,7 @@ class LongCommandClient(WinRMClient):
         try:
             receive_elem = yield self._send_receive(self._shell_id, self._command_id)
         except TimeoutError:
-            yield self.session_manager.close_connection(self)
+            yield self.close_connection()
             raise
         stdout_parts = _find_stream(receive_elem, self._command_id, 'stdout')
         stderr_parts = _find_stream(receive_elem, self._command_id, 'stderr')
@@ -417,7 +417,7 @@ class LongCommandClient(WinRMClient):
         yield self._signal_terminate(self._shell_id, self._command_id)
         yield self._delete_shell(self._shell_id)
         if close:
-            self.session_manager.close_connection(self)
+            yield self.close_connection()
         returnValue(CommandResponse(stdout, stderr, self._exit_code))
 
 
