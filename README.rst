@@ -417,3 +417,10 @@ Run txwinrm/test/precommit before merging to master. This requires that you...
     easy_install flake8
     easy_install coverage
     git clone https://github.com/dgladkov/cyclic_complexity
+
+
+Changes
+-------
+
+1.1.27
+* Add support for running commands/enumerations in a single session
