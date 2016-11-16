@@ -26,7 +26,6 @@ except ImportError:
         pass
 
 from . import constants as c
-from kerberos import GSSError
 from .util import (
     _authenticate_with_kerberos,
     _get_agent,
@@ -43,7 +42,8 @@ from .util import (
     RequestError,
     _ErrorReader,
     _StringProtocol,
-    ET
+    ET,
+    kerberos
 )
 from .shell import (
     _find_shell_id,
@@ -166,7 +166,7 @@ class WinRMSession(Session):
                     try:
                         if auth_details:
                             self._gssclient._step(auth_details)
-                    except GSSError as e:
+                    except kerberos.GSSError as e:
                         msg = "HTTP Unauthorized received.  "
                         "Kerberos error code {0}: {1}.".format(e.args[1][1], e.args[1][0])
                         raise Exception(msg)
