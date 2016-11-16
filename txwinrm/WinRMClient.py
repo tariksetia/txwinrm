@@ -315,6 +315,7 @@ class SingleCommandClient(WinRMClient):
         Run a single command in the session's semaphore.  Windows must finish
         a command conversation before a new command or enumeration can start
         '''
+        cmd_response = None
         yield self.init_connection()
         try:
             cmd_response = yield self._session.sem.run(self.run_single_command,
@@ -335,7 +336,7 @@ class SingleCommandClient(WinRMClient):
                 .exit_code = <int>
         """
         shell_id = yield self._create_shell()
-
+        cmd_response = None
         try:
             cmd_response = yield self._run_command(shell_id, command_line)
         except TimeoutError:
@@ -438,7 +439,7 @@ class EnumerateClient(WinRMClient):
         """
         Runs a remote WQL query.
         """
-        self.init_connection()
+        yield self.init_connection()
         request_template_name = 'enumerate'
         enumeration_context = None
         items = []
