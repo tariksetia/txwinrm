@@ -544,6 +544,7 @@ class AssociatorClient(EnumerateClient):
         fields - fields to return from seed_class on initial query
 
         returns dict of seed_class and all return_class results
+            mapped by search_property
 
         see https://msdn.microsoft.com/en-us/library/aa384793(v=vs.85).aspx
         """
@@ -557,6 +558,7 @@ class AssociatorClient(EnumerateClient):
         while associations:
             association = associations.pop(0)
             associate_results = []
+            prop_results = {}
             for item in input_results:
                 try:
                     prop = getattr(item, association['search_property'])
@@ -571,7 +573,8 @@ class AssociatorClient(EnumerateClient):
                         association['return_class'])
                     result = yield self.enumerate(wql, resource_uri)
                     associate_results.extend(result)
+                    prop_results[prop] = result
 
-            items[association['return_class']] = associate_results
+            items[association['return_class']] = prop_results
             input_results = associate_results
         returnValue(items)
