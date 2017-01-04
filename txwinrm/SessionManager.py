@@ -24,25 +24,22 @@ of transactions/requests being made through a single Session
 
 """
 
-from twisted.internet.defer import inlineCallbacks, returnValue, succeed
+from twisted.internet.defer import inlineCallbacks, returnValue
 
 
 class Session(object):
-    """
-    Session handler for connection to a device.
 
-    deferred_init will kick off a deferred login to a device from the first
-    client that needs the connection.  Subsequent clients will use the data
-    returned from the first login.
+    """Session handler for connection to a device.
 
-    The Session class is responsible for implementing the login/logout methods
+    Session class is responsible for implementing the login/logout methods.
     """
+
     def __init__(self):
-        # Used to keep track of clients using session
+        # Used to keep track of clients using session.
         self._clients = set()
 
-        # The currently valid token.  This can be anything that the client
-        # needs to know the connection is alive
+        # The currently valid token. This can be anything that the client
+        # needs to know the connection is alive.
         self._token = None
 
         # Deferred waiting for login result.
@@ -51,15 +48,15 @@ class Session(object):
         # Error from last login if applicable.
         self._login_error = None
 
-        # Deferred sending a refresh/keep-alive signal/request
-        self._refresh_d = None
-
     @inlineCallbacks
     def deferred_login(self, client):
-        """Return Deferred token
+        """Kick off a deferred login to a device from the first
+        client that needs the connection.
+
+        Subsequent clients will use the data returned from the first login.
 
         :param client: Client initiating a connection
-        :client: ZenPack specific client
+        :type client: ZenPack specific client
         :rtype: Deferred
         :return: Returns ZenPack unique token to be used for a session.
         """
@@ -89,16 +86,13 @@ class Session(object):
 
     @inlineCallbacks
     def deferred_logout(self, client):
-        """Return Deferred None.
-
-        Calls session._deferred_logout() only if all other clients using the same
-        session have also called deferred_logout.
-
+        """Calls session._deferred_logout() only if all other clients
+        using the same session have also called deferred_logout.
         """
         if len(self._clients) <= 1:
             if self._token:
                 try:
-                    yield self._deferred_logout()
+                    yield self._deferred_logout(client)
                 except Exception:
                     pass
 
@@ -110,63 +104,67 @@ class Session(object):
 
     @inlineCallbacks
     def _deferred_login(self, client):
-        '''login method
+        """Performs the ZenPack specific login to a device.
 
-        Performs the ZenPack specific login to a device.  This will only be called
-        from the first client to fire off the deferred.  All other clients will
-        use the _token returned from this method
+        This will only be called from the first client to fire off the deferred.
+        All other clients will use the _token returned from this method.
 
         :param client: Client initiating a connection
         :type client: ZenPack specific client
         :rtype: Deferred
         :return: Returns a Deferred which is logs into the device.
-        '''
+        """
         returnValue(None)
 
     @inlineCallbacks
-    def _deferred_logout(self):
-        '''logout method
+    def _deferred_logout(self, client):
+        """Performs the ZenPack specific logout from a device.
 
-        Performs the ZenPack specific logout from a device.  This will only be called
-        by the last client to logout of the session.
+        This will only be called by the last client to logout of the session.
 
+        :param client: Client closing connection
+        :type client: ZenPack specific client
         :rtype: Deferred
-        :return: Returns a Deferred which logs out of the device
-        '''
+        :return: Returns a Deferred which logs out of the device.
+        """
         returnValue(None)
 
 
 class SessionManager(object):
-    '''
-    Class to manage open sessions to devices.
-    '''
+
+    """Class to manage open sessions to devices."""
+
     def __init__(self):
-        # Used to keep track of sessions
+        # Used to keep track of sessions.
         self._sessions = {}
 
     def get_connection(self, key):
-        '''Return the session for a given key
-        '''
+        """Return the session for a given key."""
         if key is None:
             raise Exception('Client key cannot be empty')
         return self._sessions.get(key, None)
 
     def remove_connection(self, key):
+        """End a session by a key.
+
+        This can happen if the token is too old, the server reboots, or if
+        the XML API is disabled and enabled.
+        """
         session = self.get_connection(key)
         if session:
-            self._sessions.pop(session)
+            self._sessions.pop(key)
 
     @inlineCallbacks
     def init_connection(self, client, session_class=Session):
-        '''Initialize connection to device.
-        If a session is already started return it.
-        Else kick off deferred to initiate session
+        """Initialize connection to device.
 
-        The client must contain a key for session storage
+        If a session is already started return it
+        else kick off deferred to initiate session.
+        The client must contain a key for session storage.
 
         :param client: Client initiating connection
-        :client: ZenPack defined client.
-        '''
+        :type client: ZenPack defined client
+        """
         if not hasattr(client, 'key'):
             raise Exception('Client must contain a key field')
 
@@ -186,18 +184,19 @@ class SessionManager(object):
 
     @inlineCallbacks
     def close_connection(self, client):
-        '''Kick off a session's logout
-        If there are no more clients using a session, remove it
+        """Kick off a session's logout.
 
-        :param client:  Client closing connection
-        :client: ZenPack defined class
-        '''
+        If there are no more clients using a session, remove it.
+
+        :param client: Client closing connection
+        :type client: ZenPack defined class
+        """
         session = self.get_connection(client.key)
         if not session:
             returnValue(None)
         yield session.deferred_logout(client)
         if not session._clients:
-            # no more clients so we don't need to keep the session
+            # No more clients so we don't need to keep the session.
             self._sessions.pop(client.key)
         returnValue(None)
 

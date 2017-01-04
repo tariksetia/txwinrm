@@ -26,7 +26,6 @@ except ImportError:
         pass
 
 from . import constants as c
-from kerberos import GSSError
 from .util import (
     _authenticate_with_kerberos,
     _get_agent,
@@ -43,7 +42,7 @@ from .util import (
     RequestError,
     _ErrorReader,
     _StringProtocol,
-    ET
+    ET,
 )
 from .shell import (
     _find_shell_id,
@@ -61,6 +60,7 @@ from .enumerate import (
     _MAX_REQUESTS_PER_ENUMERATION
 )
 from .SessionManager import SESSION_MANAGER, Session
+kerberos = None
 LOG = logging.getLogger('winrm')
 
 
@@ -161,12 +161,14 @@ class WinRMSession(Session):
                     raise e
             if response.code == UNAUTHORIZED:
                 if self.is_kerberos():
+                    if not kerberos:
+                        from .util import kerberos
                     auth_header = response.headers.getRawHeaders('WWW-Authenticate')[0]
                     auth_details = get_auth_details(auth_header)
                     try:
                         if auth_details:
                             self._gssclient._step(auth_details)
-                    except GSSError as e:
+                    except kerberos.GSSError as e:
                         msg = "HTTP Unauthorized received.  "
                         "Kerberos error code {0}: {1}.".format(e.args[1][1], e.args[1][0])
                         raise Exception(msg)
@@ -315,6 +317,7 @@ class SingleCommandClient(WinRMClient):
         Run a single command in the session's semaphore.  Windows must finish
         a command conversation before a new command or enumeration can start
         '''
+        cmd_response = None
         yield self.init_connection()
         try:
             cmd_response = yield self._session.sem.run(self.run_single_command,
@@ -335,7 +338,7 @@ class SingleCommandClient(WinRMClient):
                 .exit_code = <int>
         """
         shell_id = yield self._create_shell()
-
+        cmd_response = None
         try:
             cmd_response = yield self._run_command(shell_id, command_line)
         except TimeoutError:
@@ -438,7 +441,7 @@ class EnumerateClient(WinRMClient):
         """
         Runs a remote WQL query.
         """
-        self.init_connection()
+        yield self.init_connection()
         request_template_name = 'enumerate'
         enumeration_context = None
         items = []
@@ -493,4 +496,82 @@ class EnumerateClient(WinRMClient):
                 continue
 
         yield self.close_connection()
+        returnValue(items)
+
+
+class AssociatorClient(EnumerateClient):
+
+    """
+        WinRM Client that can return wmi classes that are associated with
+        another wmi class through a single property.
+        First a regular wmi query is run to select objects from a class.
+            e.g. 'select * from Win32_NetworkAdapter'
+        Next we will loop through the results and run the associator query
+        using a specific property of the object as input to return
+        a result class.
+            e.g. for interface in interfaces:
+                "ASSOCIATORS OF {Win32_NetworkAdapter.DeviceID=interface.DeviceID} WHERE ResultClass=Win32_PnPEntity'
+    """
+
+    @inlineCallbacks
+    def associate(self,
+                  seed_class,
+                  associations,
+                  where=None,
+                  resource_uri=DEFAULT_RESOURCE_URI,
+                  fields=['*']):
+        """Method to retrieve associated wmi classes based upon a
+        property from a given class
+
+        seed_class - wmi class which will be initially queried
+        associations - list of dicts containing parameters for
+            the 'ASSOCIATORS of {A}' wql statement.  We dequeue the
+            dicts and can search results from previous wql query to
+            search for nested associations.
+                search_class - initial class to associate with
+                search_property - property on search_class to match
+                return_class - class which will be returned
+                where_type - keyword of association type:
+                    AssocClass = AssocClassName
+                    RequiredAssocQualifier = QualifierName
+                    RequiredQualifier = QualifierName
+                    ResultClass = ClassName
+                    ResultRole = PropertyName
+                    Role = PropertyName
+        where - wql where clause to narrow scope of initial query
+        resource_uri - uri of resource.  this will be the same for both
+            input and result classes.  Limitation of WQL
+        fields - fields to return from seed_class on initial query
+
+        returns dict of seed_class and all return_class results
+
+        see https://msdn.microsoft.com/en-us/library/aa384793(v=vs.85).aspx
+        """
+        items = {}
+        wql = 'Select {} from {}'.format(','.join(fields), seed_class)
+        if where:
+            wql += ' where {}'.format(where)
+        input_results = yield self.enumerate(wql, resource_uri)
+
+        items[seed_class] = input_results
+        while associations:
+            association = associations.pop(0)
+            associate_results = []
+            for item in input_results:
+                try:
+                    prop = getattr(item, association['search_property'])
+                except AttributeError:
+                    continue
+                else:
+                    wql = "ASSOCIATORS of {{{}.{}='{}'}} WHERE {}={}".format(
+                        association['search_class'],
+                        association['search_property'],
+                        prop,
+                        association['where_type'],
+                        association['return_class'])
+                    result = yield self.enumerate(wql, resource_uri)
+                    associate_results.extend(result)
+
+            items[association['return_class']] = associate_results
+            input_results = associate_results
         returnValue(items)
