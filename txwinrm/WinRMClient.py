@@ -8,6 +8,7 @@
 ##############################################################################
 
 import logging
+from collections import namedtuple
 from httplib import BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, OK
 
 from twisted.internet.defer import (
@@ -62,6 +63,8 @@ from .enumerate import (
 from .SessionManager import SESSION_MANAGER, Session
 kerberos = None
 LOG = logging.getLogger('winrm')
+
+EnumInfo = namedtuple('EnumInfo', ['wql', 'resource_uri'])
 
 
 class WinRMSession(Session):
@@ -552,7 +555,9 @@ class AssociatorClient(EnumerateClient):
         wql = 'Select {} from {}'.format(','.join(fields), seed_class)
         if where:
             wql += ' where {}'.format(where)
-        input_results = yield self.enumerate(wql, resource_uri)
+        enum_info = EnumInfo(wql, resource_uri)
+        results = yield self.do_collect([enum_info])
+        input_results = results[enum_info]
 
         items[seed_class] = input_results
         while associations:
@@ -571,9 +576,10 @@ class AssociatorClient(EnumerateClient):
                         prop,
                         association['where_type'],
                         association['return_class'])
-                    result = yield self.enumerate(wql, resource_uri)
-                    associate_results.extend(result)
-                    prop_results[prop] = result
+                    enum_info = EnumInfo(wql, resource_uri)
+                    result = yield self.do_collect([enum_info])
+                    associate_results.extend(result[enum_info])
+                    prop_results[prop] = result[enum_info]
 
             items[association['return_class']] = prop_results
             input_results = associate_results
