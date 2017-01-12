@@ -417,9 +417,11 @@ class ConnectionInfo(namedtuple(
         'trusted_realm',
         'trusted_kdc',
         'ipaddress',
-        'service'])):
+        'service',
+        'envelope_size'])):
     def __new__(cls, hostname, auth_type, username, password, scheme, port,
-                connectiontype, keytab, dcip, timeout=60, trusted_realm='', trusted_kdc='', ipaddress='', service=''):
+                connectiontype, keytab, dcip, timeout=60, trusted_realm='',
+                trusted_kdc='', ipaddress='', service='', envelope_size=512000):
         if not ipaddress:
             ipaddress = hostname
         if not service:
@@ -428,7 +430,8 @@ class ConnectionInfo(namedtuple(
                                                   username, password, scheme,
                                                   port, connectiontype, keytab,
                                                   dcip, timeout,
-                                                  trusted_realm, trusted_kdc, ipaddress, service)
+                                                  trusted_realm, trusted_kdc, ipaddress, service,
+                                                  envelope_size)
 
 
 def verify_hostname(conn_info):

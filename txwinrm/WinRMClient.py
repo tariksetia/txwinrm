@@ -193,6 +193,8 @@ class WinRMSession(Session):
 
     @inlineCallbacks
     def send_request(self, request_template_name, client, **kwargs):
+        if 'envelope_size' not in kwargs.keys():
+            kwargs['envelope_size'] = client._conn_info.envelope_size
         response = yield self._send_request(
             request_template_name, client, **kwargs)
         proto = _StringProtocol()
@@ -213,6 +215,8 @@ class WinRMSession(Session):
 
     @inlineCallbacks
     def _send_request(self, request_template_name, client, **kwargs):
+        if 'envelope_size' not in kwargs.keys():
+            kwargs['envelope_size'] = client._conn_info.envelope_size
         if self._login_d and not self._login_d.called:
             # check for a reconnection attempt so we do not send any requests
             # to a dead connection
