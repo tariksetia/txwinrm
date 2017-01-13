@@ -244,7 +244,7 @@ class ParserFeedingProtocol(Protocol):
             try:
                 self._xml_parser.feed(data)
             except Exception:
-                log.debug('Could not parse data {}'.format(data))
+                raise Exception('Could not parse SOAP message: {}'.format(data))
         if self._debug_data and log.isEnabledFor(logging.DEBUG):
             try:
                 import xml.dom.minidom
