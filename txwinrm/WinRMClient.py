@@ -8,6 +8,7 @@
 ##############################################################################
 
 import logging
+from collections import namedtuple
 from httplib import BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, OK
 
 from twisted.internet.defer import (
@@ -62,6 +63,8 @@ from .enumerate import (
 from .SessionManager import SESSION_MANAGER, Session
 kerberos = None
 LOG = logging.getLogger('winrm')
+
+EnumInfo = namedtuple('EnumInfo', ['wql', 'resource_uri'])
 
 
 class WinRMSession(Session):
@@ -189,9 +192,9 @@ class WinRMSession(Session):
         returnValue(response)
 
     @inlineCallbacks
-    def send_request(self, request_template_name, client, **kwargs):
+    def send_request(self, request_template_name, client, envelope_size=None, **kwargs):
         response = yield self._send_request(
-            request_template_name, client, **kwargs)
+            request_template_name, client, envelope_size=envelope_size, **kwargs)
         proto = _StringProtocol()
         response.deliverBody(proto)
         body = yield proto.d
@@ -209,7 +212,8 @@ class WinRMSession(Session):
         returnValue(ET.fromstring(xml_str))
 
     @inlineCallbacks
-    def _send_request(self, request_template_name, client, **kwargs):
+    def _send_request(self, request_template_name, client, envelope_size=None, **kwargs):
+        kwargs['envelope_size'] = envelope_size or client._conn_info.envelope_size
         if self._login_d and not self._login_d.called:
             # check for a reconnection attempt so we do not send any requests
             # to a dead connection
@@ -552,7 +556,9 @@ class AssociatorClient(EnumerateClient):
         wql = 'Select {} from {}'.format(','.join(fields), seed_class)
         if where:
             wql += ' where {}'.format(where)
-        input_results = yield self.enumerate(wql, resource_uri)
+        enum_info = EnumInfo(wql, resource_uri)
+        results = yield self.do_collect([enum_info])
+        input_results = results[enum_info]
 
         items[seed_class] = input_results
         while associations:
@@ -571,9 +577,10 @@ class AssociatorClient(EnumerateClient):
                         prop,
                         association['where_type'],
                         association['return_class'])
-                    result = yield self.enumerate(wql, resource_uri)
-                    associate_results.extend(result)
-                    prop_results[prop] = result
+                    enum_info = EnumInfo(wql, resource_uri)
+                    result = yield self.do_collect([enum_info])
+                    associate_results.extend(result[enum_info])
+                    prop_results[prop] = result[enum_info]
 
             items[association['return_class']] = prop_results
             input_results = associate_results

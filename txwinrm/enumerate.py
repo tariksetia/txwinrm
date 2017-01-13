@@ -216,7 +216,7 @@ class ParserFeedingProtocol(Protocol):
         self.d = defer.Deferred()
         self._debug_data = ''
         self._sender = sender
-        self._data = [] 
+        self._data = []
 
     def dataReceived(self, data):
         """
@@ -241,13 +241,16 @@ class ParserFeedingProtocol(Protocol):
             #  Decrypt data first
             data = self._sender.decrypt_body(''.join(self._data))
             self._debug_data = data
-            self._xml_parser.feed(data)
+            try:
+                self._xml_parser.feed(data)
+            except Exception:
+                raise Exception('Could not parse SOAP message: {}'.format(data))
         if self._debug_data and log.isEnabledFor(logging.DEBUG):
             try:
                 import xml.dom.minidom
                 xml = xml.dom.minidom.parseString(self._debug_data)
                 log.debug(xml.toprettyxml())
-            except:
+            except Exception:
                 log.debug('Could not prettify response XML: "{0}"'
                           .format(self._debug_data))
         if isinstance(reason.value, ResponseFailed):
