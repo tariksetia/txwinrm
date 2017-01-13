@@ -192,9 +192,9 @@ class WinRMSession(Session):
         returnValue(response)
 
     @inlineCallbacks
-    def send_request(self, request_template_name, client, **kwargs):
+    def send_request(self, request_template_name, client, envelope_size=None, **kwargs):
         response = yield self._send_request(
-            request_template_name, client, **kwargs)
+            request_template_name, client, envelope_size=envelope_size, **kwargs)
         proto = _StringProtocol()
         response.deliverBody(proto)
         body = yield proto.d
@@ -212,7 +212,8 @@ class WinRMSession(Session):
         returnValue(ET.fromstring(xml_str))
 
     @inlineCallbacks
-    def _send_request(self, request_template_name, client, **kwargs):
+    def _send_request(self, request_template_name, client, envelope_size=None, **kwargs):
+        kwargs['envelope_size'] = envelope_size or client._conn_info.envelope_size
         if self._login_d and not self._login_d.called:
             # check for a reconnection attempt so we do not send any requests
             # to a dead connection

@@ -6,7 +6,7 @@
             <a:Address s:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address>
         </a:ReplyTo>
         <a:Action s:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/09/enumeration/Pull</a:Action>
-        <w:MaxEnvelopeSize s:mustUnderstand="true">512000</w:MaxEnvelopeSize>
+        <w:MaxEnvelopeSize s:mustUnderstand="true">{envelope_size}</w:MaxEnvelopeSize>
         <a:MessageID>uuid:578DC055-B6C4-4387-B39F-E992D0ED76A0</a:MessageID>
         <w:OperationTimeout>PT60.000S</w:OperationTimeout>
     </s:Header>

@@ -5,7 +5,7 @@
             <a:Address s:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address>
         </a:ReplyTo>
         <a:Action s:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/08/eventing/Unsubscribe</a:Action>
-        <w:MaxEnvelopeSize s:mustUnderstand="true">153600</w:MaxEnvelopeSize>
+        <w:MaxEnvelopeSize s:mustUnderstand="true">{envelope_size}</w:MaxEnvelopeSize>
         <a:MessageID>uuid:2A0865D5-CA69-4CEC-A9BB-CAAF455DF2AE</a:MessageID>
         <w:Locale s:mustUnderstand="false" xml:lang="en-US"/>
         <p:DataLocale s:mustUnderstand="false" xml:lang="en-US"/>

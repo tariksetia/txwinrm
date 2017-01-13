@@ -5,7 +5,7 @@
             <a:Address s:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/08/addressing/role/anonymous</a:Address>
         </a:ReplyTo>
         <a:Action s:mustUnderstand="true">http://schemas.microsoft.com/wbem/wsman/1/windows/shell/Receive</a:Action>
-        <w:MaxEnvelopeSize s:mustUnderstand="true">153600</w:MaxEnvelopeSize>
+        <w:MaxEnvelopeSize s:mustUnderstand="true">{envelope_size}</w:MaxEnvelopeSize>
         <a:MessageID>uuid:D40A0940-F00D-4E7A-9DB2-D668853DC958</a:MessageID>
         <w:Locale xml:lang="en-US" s:mustUnderstand="false" />
         <p:DataLocale xml:lang="en-US" s:mustUnderstand="false" />
