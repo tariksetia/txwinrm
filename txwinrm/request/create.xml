@@ -8,11 +8,11 @@
         <a:Action s:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/09/transfer/Create</a:Action>
         <w:MaxEnvelopeSize s:mustUnderstand="true">{envelope_size}</w:MaxEnvelopeSize>
         <a:MessageID>uuid:D515053B-134D-4B63-9DA9-6FA9C520A6B4</a:MessageID>
-        <w:Locale xml:lang="en-US" s:mustUnderstand="false" />
-        <p:DataLocale xml:lang="en-US" s:mustUnderstand="false" />
+        <w:Locale xml:lang="{locale}" s:mustUnderstand="false" />
+        <p:DataLocale xml:lang="{locale}" s:mustUnderstand="false" />
         <w:OptionSet xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <w:Option Name="WINRS_NOPROFILE">FALSE</w:Option>
-            <w:Option Name="WINRS_CODEPAGE">437</w:Option>
+            <w:Option Name="WINRS_CODEPAGE">{code_page}</w:Option>
         </w:OptionSet>
         <w:OperationTimeout>PT60.000S</w:OperationTimeout>
     </s:Header>

@@ -418,10 +418,14 @@ class ConnectionInfo(namedtuple(
         'trusted_kdc',
         'ipaddress',
         'service',
-        'envelope_size'])):
+        'envelope_size',
+        'code_page',
+        'encoding',
+        'locale'])):
     def __new__(cls, hostname, auth_type, username, password, scheme, port,
                 connectiontype, keytab, dcip, timeout=60, trusted_realm='',
-                trusted_kdc='', ipaddress='', service='', envelope_size=512000):
+                trusted_kdc='', ipaddress='', service='', envelope_size=512000,
+                code_page=65001, encoding='utf-8', locale='en-US'):
         if not ipaddress:
             ipaddress = hostname
         if not service:
@@ -430,8 +434,22 @@ class ConnectionInfo(namedtuple(
                                                   username, password, scheme,
                                                   port, connectiontype, keytab,
                                                   dcip, timeout,
-                                                  trusted_realm, trusted_kdc, ipaddress, service,
-                                                  envelope_size)
+                                                  trusted_realm, trusted_kdc,
+                                                  ipaddress, service,
+                                                  envelope_size, code_page,
+                                                  encoding, locale)
+
+
+def verify_code_page(conn_info):
+    has_code_page, code_page = _has_get_attr(conn_info, 'code_page')
+    if not has_code_page or not isinstance(code_page, int):
+        raise Exception("code_page must be an integer")
+
+
+def verify_envelope_size(conn_info):
+    has_envelope_size, envelope_size = _has_get_attr(conn_info, 'envelope_size')
+    if not has_envelope_size or not isinstance(envelope_size, int):
+        raise Exception("envelope_size must be an integer")
 
 
 def verify_hostname(conn_info):
