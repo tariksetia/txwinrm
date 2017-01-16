@@ -7,8 +7,8 @@
         <a:Action s:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/09/transfer/Delete</a:Action>
         <w:MaxEnvelopeSize s:mustUnderstand="true">{envelope_size}</w:MaxEnvelopeSize>
         <a:MessageID>uuid:EEA0F479-EC1D-4908-BAAF-B023103E5DDB</a:MessageID>
-        <w:Locale xml:lang="en-US" s:mustUnderstand="false" />
-        <p:DataLocale xml:lang="en-US" s:mustUnderstand="false" />
+        <w:Locale xml:lang="{locale}" s:mustUnderstand="false" />
+        <p:DataLocale xml:lang="{locale}" s:mustUnderstand="false" />
         <w:ResourceURI xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">http://schemas.microsoft.com/wbem/wsman/1/windows/shell/cmd</w:ResourceURI>
         <w:SelectorSet xmlns:w="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd" xmlns="http://schemas.dmtf.org/wbem/wsman/1/wsman.xsd">
             <w:Selector Name="ShellId">{shell_id}</w:Selector>

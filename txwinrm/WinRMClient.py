@@ -10,6 +10,9 @@
 import logging
 from collections import namedtuple
 from httplib import BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, OK
+import shlex
+from cStringIO import StringIO
+from xml.etree import cElementTree as ET
 
 from twisted.internet.defer import (
     inlineCallbacks,
@@ -66,12 +69,49 @@ LOG = logging.getLogger('winrm')
 
 EnumInfo = namedtuple('EnumInfo', ['wql', 'resource_uri'])
 
+def _build_ps_command_line_elem(ps_command, ps_script, encoding='utf-8'):
+    """Build PowerShell command line elements without splitting
+    the actual ps script into arguments. using _build_command_line_elem
+    with a ps script splits the script into separate arguments.  Remote
+    Windows shell inserts spaces when reconstituting the script.
+
+    ps_command - powershell command with arguments as string
+        e.g. 'powershell -NoLogo -NonInteractive -NoProfile -Command'
+    ps_script - script to be run in powershell as single line string
+        e.g. "& {get-counter -counter \"\memory\pages output/sec\" }"
+    """
+    command_line_parts = shlex.split(ps_command, posix=False)
+    # ensure '-command' is last
+    if command_line_parts[-1:][0].lower() != '-command':
+        index = 0
+        for option in command_line_parts:
+            if option.lower() == '-command':
+                command_line_parts.pop(index)
+                break
+            index += 1
+        command_line_parts.append(option)
+    prefix = "rsp"
+    ET.register_namespace(prefix, c.XML_NS_MSRSP)
+    command_line_elem = ET.Element('{%s}CommandLine' % c.XML_NS_MSRSP)
+    command_elem = ET.Element('{%s}Command' % c.XML_NS_MSRSP)
+    command_elem.text = command_line_parts[0]
+    command_line_elem.append(command_elem)
+    for arguments_text in command_line_parts[1:]:
+        arguments_elem = ET.Element('{%s}Arguments' % c.XML_NS_MSRSP)
+        arguments_elem.text = arguments_text
+        command_line_elem.append(arguments_elem)
+    arguments_elem = ET.Element('{%s}Arguments' % c.XML_NS_MSRSP)
+    arguments_elem.text = ps_script
+    command_line_elem.append(arguments_elem)
+    tree = ET.ElementTree(command_line_elem)
+    str_io = StringIO()
+    tree.write(str_io, encoding=encoding)
+    return str_io.getvalue()
+
 
 class WinRMSession(Session):
     '''
     Session class to keep track of single winrm connection
-
-
     '''
     def __init__(self):
         super(WinRMSession, self).__init__()
@@ -212,8 +252,11 @@ class WinRMSession(Session):
         returnValue(ET.fromstring(xml_str))
 
     @inlineCallbacks
-    def _send_request(self, request_template_name, client, envelope_size=None, **kwargs):
+    def _send_request(self, request_template_name, client, envelope_size=None,
+                      locale=None, code_page=None, **kwargs):
         kwargs['envelope_size'] = envelope_size or client._conn_info.envelope_size
+        kwargs['locale'] = locale or client._conn_info.locale
+        kwargs['code_page'] = code_page or client._conn_info.code_page
         if self._login_d and not self._login_d.called:
             # check for a reconnection attempt so we do not send any requests
             # to a dead connection
@@ -241,12 +284,17 @@ class WinRMSession(Session):
 
 
 class WinRMClient(object):
+    """Base winrm client class
+
+    Contains core functionality for various types of winrm based clients
+    """
     def __init__(self, conn_info):
         verify_conn_info(conn_info)
         self.key = None
         self._conn_info = conn_info
         self.session_manager = SESSION_MANAGER
         self._session = None
+        self.ps_script = None
 
     @inlineCallbacks
     def init_connection(self):
@@ -291,7 +339,15 @@ class WinRMClient(object):
 
     @inlineCallbacks
     def _send_command(self, shell_id, command_line):
-        command_line_elem = _build_command_line_elem(command_line)
+        if self.ps_script is not None:
+            command_line_elem = _build_ps_command_line_elem(command_line,
+                                                            self.ps_script,
+                                                            self._conn_info.encoding)
+        else:
+            command_line_elem = _build_command_line_elem(command_line)
+        LOG.debug('WinRMClient._send_command: sending command request '
+                  '(shell_id={0}, command_line_elem={1})'.format(
+                      shell_id, command_line_elem))
         command_elem = yield self._session.send_request(
             'command', self, shell_id=shell_id, command_line_elem=command_line_elem,
             timeout=self._conn_info.timeout)
@@ -310,22 +366,28 @@ class WinRMClient(object):
 
 
 class SingleCommandClient(WinRMClient):
-
+    """Client to send a single command to a winrm device"""
     def __init__(self, conn_info):
         super(SingleCommandClient, self).__init__(conn_info)
         self.key = (self._conn_info.ipaddress, 'short')
 
     @inlineCallbacks
-    def run_command(self, command_line):
-        '''
-        Run a single command in the session's semaphore.  Windows must finish
+    def run_command(self, command_line, ps_script=None):
+        """Run a single command in the session's semaphore.  Windows must finish
         a command conversation before a new command or enumeration can start
-        '''
+
+        If running a powershell script, send it in separately with ps_script in
+        "& {<actual script here>}" format
+        e.g. command_line='powershell -NoLogo -NonInteractive -NoProfile -Command',
+        ps_script='"& {get-counter -counter \\\"\memory\pages output/sec\\\" }"'
+        """
         cmd_response = None
+        self.ps_script = ps_script
         yield self.init_connection()
         try:
             cmd_response = yield self._session.sem.run(self.run_single_command,
-                                                       command_line)
+                                                       command_line,
+                                                       ps_script)
         except Exception:
             yield self.close_connection()
         returnValue(cmd_response)
@@ -375,6 +437,7 @@ class SingleCommandClient(WinRMClient):
 
 
 class LongCommandClient(WinRMClient):
+    """Client to run a single long running command to a winrm device"""
     def __init__(self, conn_info):
         super(LongCommandClient, self).__init__(conn_info)
         self._shell_id = None
@@ -382,15 +445,20 @@ class LongCommandClient(WinRMClient):
         self._exit_code = None
 
     @inlineCallbacks
-    def start(self, command_line):
+    def start(self, command_line, ps_script=''):
+        """Start long running command
+
+        If running a powershell script, send it in separately with ps_script in
+        "& {<actual script here>}" format
+        e.g. command_line='powershell -NoLogo -NonInteractive -NoProfile -Command',
+        ps_script='"& {get-counter -counter \\\"\memory\pages output/sec\\\" }"'
+
+        """
         LOG.debug("LongRunningCommand run_command: {0}".format(command_line))
         self.key = (self._conn_info.ipaddress, command_line)
+        self.ps_script = ps_script
         yield self.init_connection()
         self._shell_id = yield self._create_shell()
-        command_line_elem = _build_command_line_elem(command_line)
-        LOG.debug('LongRunningCommand run_command: sending command request '
-                  '(shell_id={0}, command_line_elem={1})'.format(
-                      self._shell_id, command_line_elem))
         try:
             command_elem = yield self._send_command(self._shell_id,
                                                     command_line)
@@ -429,7 +497,8 @@ class LongCommandClient(WinRMClient):
 
 
 class EnumerateClient(WinRMClient):
-    """
+    """Client to send a single wmi query(WQL) to a winrm device
+
     Sends enumerate requests to a host running the WinRM service and returns
     a list of items.
     """
@@ -442,9 +511,7 @@ class EnumerateClient(WinRMClient):
 
     @inlineCallbacks
     def enumerate(self, wql, resource_uri=DEFAULT_RESOURCE_URI):
-        """
-        Runs a remote WQL query.
-        """
+        """Runs a remote WQL query."""
         yield self.init_connection()
         request_template_name = 'enumerate'
         enumeration_context = None
@@ -480,10 +547,9 @@ class EnumerateClient(WinRMClient):
 
     @inlineCallbacks
     def do_collect(self, enum_infos):
-        '''
-        Run enumerations in the session's semaphore.  Windows must finish
+        """Run enumerations in the session's semaphore.  Windows must finish
         an enumeration before a new command or enumeration can start
-        '''
+        """
         items = {}
         yield self.init_connection()
         self._session = self.session_manager.get_connection(self.key)
@@ -504,9 +570,7 @@ class EnumerateClient(WinRMClient):
 
 
 class AssociatorClient(EnumerateClient):
-
-    """
-        WinRM Client that can return wmi classes that are associated with
+    """WinRM Client that can return wmi classes that are associated with
         another wmi class through a single property.
         First a regular wmi query is run to select objects from a class.
             e.g. 'select * from Win32_NetworkAdapter'

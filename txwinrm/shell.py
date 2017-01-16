@@ -49,7 +49,7 @@ class CommandResponse(object):
             stdout=self.stdout, stderr=self.stderr, exit_code=self.exit_code))
 
 
-def _build_command_line_elem(command_line):
+def _build_command_line_elem(command_line, encoding='utf-8'):
     command_line_parts = shlex.split(command_line, posix=False)
     prefix = "rsp"
     ET.register_namespace(prefix, c.XML_NS_MSRSP)
@@ -63,7 +63,7 @@ def _build_command_line_elem(command_line):
         command_line_elem.append(arguments_elem)
     tree = ET.ElementTree(command_line_elem)
     str_io = StringIO()
-    tree.write(str_io)
+    tree.write(str_io, encoding=encoding)
     return str_io.getvalue()
 
 
