@@ -8,8 +8,8 @@
         <a:Action s:mustUnderstand="true">http://schemas.xmlsoap.org/ws/2004/09/enumeration/Pull</a:Action>
         <w:MaxEnvelopeSize s:mustUnderstand="true">{envelope_size}</w:MaxEnvelopeSize>
         <a:MessageID>uuid:DC17922E-EBE7-4333-B92A-7157EB372F33</a:MessageID>
-        <w:Locale s:mustUnderstand="false" xml:lang="en-US"/>
-        <p:DataLocale s:mustUnderstand="false" xml:lang="en-US"/>
+        <w:Locale s:mustUnderstand="false" xml:lang="{locale}"/>
+        <p:DataLocale s:mustUnderstand="false" xml:lang="{locale}"/>
         <w:OptionSet xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
             <w:Option Name="SubscriptionName">ZenossSubscription</w:Option>
             <w:Option Name="ContentFormat">RenderedText</w:Option>
