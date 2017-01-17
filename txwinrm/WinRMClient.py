@@ -12,7 +12,6 @@ from collections import namedtuple
 from httplib import BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, OK
 import shlex
 from cStringIO import StringIO
-from xml.etree import cElementTree as ET
 
 from twisted.internet.defer import (
     inlineCallbacks,
@@ -68,6 +67,7 @@ kerberos = None
 LOG = logging.getLogger('winrm')
 
 EnumInfo = namedtuple('EnumInfo', ['wql', 'resource_uri'])
+
 
 def _build_ps_command_line_elem(ps_command, ps_script, encoding='utf-8'):
     """Build PowerShell command line elements without splitting
@@ -386,8 +386,7 @@ class SingleCommandClient(WinRMClient):
         yield self.init_connection()
         try:
             cmd_response = yield self._session.sem.run(self.run_single_command,
-                                                       command_line,
-                                                       ps_script)
+                                                       command_line)
         except Exception:
             yield self.close_connection()
         returnValue(cmd_response)
