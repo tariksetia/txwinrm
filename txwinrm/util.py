@@ -420,12 +420,11 @@ class ConnectionInfo(namedtuple(
         'service',
         'envelope_size',
         'code_page',
-        'encoding',
         'locale'])):
     def __new__(cls, hostname, auth_type, username, password, scheme, port,
                 connectiontype, keytab, dcip, timeout=60, trusted_realm='',
                 trusted_kdc='', ipaddress='', service='', envelope_size=512000,
-                code_page=65001, encoding='utf-8', locale='en-US'):
+                code_page=65001, locale='en-US'):
         if not ipaddress:
             ipaddress = hostname
         if not service:
@@ -436,8 +435,7 @@ class ConnectionInfo(namedtuple(
                                                   dcip, timeout,
                                                   trusted_realm, trusted_kdc,
                                                   ipaddress, service,
-                                                  envelope_size, code_page,
-                                                  encoding, locale)
+                                                  envelope_size, code_page, locale)
 
 
 def verify_code_page(conn_info):
