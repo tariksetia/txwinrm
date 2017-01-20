@@ -69,7 +69,7 @@ LOG = logging.getLogger('winrm')
 EnumInfo = namedtuple('EnumInfo', ['wql', 'resource_uri'])
 
 
-def _build_ps_command_line_elem(ps_command, ps_script, encoding='utf-8'):
+def _build_ps_command_line_elem(ps_command, ps_script):
     """Build PowerShell command line elements without splitting
     the actual ps script into arguments. using _build_command_line_elem
     with a ps script splits the script into separate arguments.  Remote
@@ -105,7 +105,7 @@ def _build_ps_command_line_elem(ps_command, ps_script, encoding='utf-8'):
     command_line_elem.append(arguments_elem)
     tree = ET.ElementTree(command_line_elem)
     str_io = StringIO()
-    tree.write(str_io, encoding=encoding)
+    tree.write(str_io, encoding='utf-8')
     return str_io.getvalue()
 
 
@@ -341,8 +341,7 @@ class WinRMClient(object):
     def _send_command(self, shell_id, command_line):
         if self.ps_script is not None:
             command_line_elem = _build_ps_command_line_elem(command_line,
-                                                            self.ps_script,
-                                                            self._conn_info.encoding)
+                                                            self.ps_script)
         else:
             command_line_elem = _build_command_line_elem(command_line)
         LOG.debug('WinRMClient._send_command: sending command request '
