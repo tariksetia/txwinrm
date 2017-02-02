@@ -13,6 +13,7 @@ from httplib import BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, OK
 import shlex
 from cStringIO import StringIO
 
+from twisted.internet import reactor
 from twisted.internet.defer import (
     inlineCallbacks,
     returnValue,
@@ -135,6 +136,8 @@ class WinRMSession(Session):
         # at a time.  Windows cannot handle mixed transaction types on one
         # connection.
         self.sem = DeferredSemaphore(1)
+
+        self._refresh_dc = None
 
     def is_kerberos(self):
         return self._conn_info.auth_type == 'kerberos'
@@ -282,6 +285,17 @@ class WinRMSession(Session):
         response = yield self.handle_response(request, response, client)
         returnValue(response)
 
+    def close_connection(self, client):
+        try:
+            self._refresh_dc.cancel()
+        except Exception:
+            pass
+
+        # Close the connection after 30 seconds.  This will give other clients
+        # enough time to keep the connection alive and continue using the same session.
+        # Windows or network could close idle connections also, which we would not detect
+        self._refresh_dc = reactor.callLater(30, SESSION_MANAGER.close_connection, client)
+
 
 class WinRMClient(object):
     """Base winrm client class
@@ -360,7 +374,7 @@ class WinRMClient(object):
 
     @inlineCallbacks
     def close_connection(self):
-        yield self.session_manager.close_connection(self)
+        yield self._session.close_connection(self)
         returnValue(None)
 
 
