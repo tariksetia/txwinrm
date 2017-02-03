@@ -8,7 +8,6 @@
 ##############################################################################
 
 import logging
-LOG = logging.getLogger('txwinrm.krb5')
 
 import collections
 import os
@@ -16,12 +15,13 @@ import re
 
 from twisted.internet import defer, reactor
 from twisted.internet.protocol import ProcessProtocol
+LOG = logging.getLogger('txwinrm.krb5')
 
 
 __all__ = [
     'kinit',
     'ccname',
-    ]
+]
 
 
 KRB5_CONF_TEMPLATE = (
@@ -50,63 +50,57 @@ KRB5_CONF_TEMPLATE = (
     "\n"
     "[domain_realm]\n"
     "{domain_realm_text}"
-    )
+)
+
+KDC_TEMPLATE = (
+    "  kdc = {kdc}"
+)
 
 REALM_TEMPLATE = (
     " {realm} = {{\n"
-    "  kdc = {kdc}\n"
-    "  admin_server = {kdc}\n"
+    "{kdcs}\n"
+    "  admin_server = {admin_server}\n"
     " }}\n"
-    )
+)
 
 DOMAIN_REALM_TEMPLATE = (
     " .{domain} = {realm}\n"
     " {domain} = {realm}\n"
-    )
+)
 
 
 class Config(object):
-    '''
-    Manages KRB5_CONFIG.
-    '''
+    """Manages KRB5_CONFIG."""
 
     def __init__(self):
-        '''
-        Initialize instance with data from KRB5_CONFIG.
-        '''
+        """Initialize instance with data from KRB5_CONFIG."""
         self.path = self.get_path()
-        self.realms = self.load()
+        self.realms, self.admin_servers = self.load()
 
         # For further usage by kerberos python module.
         os.environ['KRB5_CONFIG'] = self.path
 
     def add_kdc(self, realm, kdc):
-        '''
+        """
         Add realm and KDC to KRB5_CONFIG.
-        '''
+        """
         if kdc in self.realms[realm]:
             return
 
-        '''
-        Remove any old kdcs ZEN-13244
-        '''
-        try:
-            self.realms[realm].pop()
-        except KeyError:
-            pass
         self.realms[realm].add(kdc)
+        if not self.admin_servers.get(realm):
+            self.admin_servers[realm] = kdc
         self.save()
 
     def get_path(self):
-        '''
-        Return the path to krb5.conf.
+        """Return the path to krb5.conf.
 
         Order of preference:
             1. $KRB5_CONFIG
             2. $ZENHOME/var/krb5.conf
             3. $HOME/.txwinrm/krb5.conf
             4. /etc/krb5.conf
-        '''
+        """
         if 'KRB5_CONFIG' in os.environ:
             return os.environ['KRB5_CONFIG']
 
@@ -119,15 +113,14 @@ class Config(object):
         return os.path.join('/etc', 'krb5.conf')
 
     def get_ccname(self, username):
-        '''
-        Return KRB5CCNAME environment for username.
+        """Return KRB5CCNAME environment for username.
 
         We use a separate credential cache for each username because
         kinit causes all previous credentials to be destroyed when a new
         one is initialized.
 
         https://groups.google.com/forum/#!topic/comp.protocols.kerberos/IjtK9Mo39qc
-        '''
+        """
         if 'ZENHOME' in os.environ:
             return os.path.join(
                 os.environ['ZENHOME'], 'var', 'krb5cc', username)
@@ -139,13 +132,12 @@ class Config(object):
         return ''
 
     def load(self):
-        '''
-        Load current realms from KRB5_CONFIG file.
-        '''
+        """Load current realms from KRB5_CONFIG file."""
         realm_kdcs = collections.defaultdict(set)
+        realm_adminservers = {}
 
         if not os.path.isfile(self.path):
-            return realm_kdcs
+            return realm_kdcs, realm_adminservers
 
         with open(self.path, 'r') as krb5_conf:
             in_realms_section = False
@@ -171,12 +163,14 @@ class Config(object):
                         if match:
                             realm_kdcs[in_realm].add(match.group(1))
 
-        return realm_kdcs
+                        match = re.search(r'admin_server\s+=\s+(\S+)', line)
+                        if match:
+                            realm_adminservers[in_realm] = match.group(1)
+
+        return realm_kdcs, realm_adminservers
 
     def save(self):
-        '''
-        Save current realm KDCs to KRB5_CONFIG.
-        '''
+        """Save current realm KDCs to KRB5_CONFIG."""
         realms_list = []
         domain_realm_list = []
 
@@ -184,9 +178,15 @@ class Config(object):
             if not kdcs:
                 continue
 
+            kdc_list = []
+            for kdc in kdcs:
+                kdc_list.append(KDC_TEMPLATE.format(kdc=kdc))
+
             realms_list.append(
                 REALM_TEMPLATE.format(
-                    realm=realm.upper(), kdc=tuple(kdcs)[0]))
+                    realm=realm.upper(),
+                    kdcs='\n'.join(kdc_list),
+                    admin_server=self.admin_servers[realm.upper()]))
 
             domain_realm_list.append(
                 DOMAIN_REALM_TEMPLATE.format(
@@ -214,12 +214,11 @@ config = Config()
 
 
 class KinitProcessProtocol(ProcessProtocol):
-    '''
-    Communicates with kinit command.
+    """Communicates with kinit command.
 
     The only thing we do is answer the password prompt. We don't even
     care about the output.
-    '''
+    """
 
     def __init__(self, password):
         self._password = password
@@ -246,9 +245,7 @@ class KinitProcessProtocol(ProcessProtocol):
 
 @defer.inlineCallbacks
 def kinit(username, password, kdc):
-    '''
-    Perform kerberos initialization.
-    '''
+    """Perform kerberos initialization."""
     kinit = None
     for path in ('/usr/bin/kinit', '/usr/kerberos/bin/kinit'):
         if os.path.isfile(path):
@@ -278,7 +275,7 @@ def kinit(username, password, kdc):
     kinit_env = {
         'KRB5_CONFIG': config.path,
         'KRB5CCNAME': ccname,
-        }
+    }
 
     protocol = KinitProcessProtocol(password)
 
@@ -289,16 +286,12 @@ def kinit(username, password, kdc):
 
 
 def ccname(username):
-    '''
-    Return KRB5CCNAME value for username.
-    '''
+    """Return KRB5CCNAME value for username."""
     return config.get_ccname(username)
 
 
 def add_trusted_realm(realm, kdc):
-    '''
-    Add a trusted realm for cross realm authentication
-    '''
+    """Add a trusted realm for cross realm authentication"""
     trusted_realm = realm.upper()
     global config
     config.add_kdc(trusted_realm, kdc)
