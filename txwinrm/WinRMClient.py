@@ -291,10 +291,9 @@ class WinRMSession(Session):
         except Exception:
             pass
 
-        # Close the connection after 30 seconds.  This will give other clients
+        # Close the connection after 60 seconds.  This will give other clients
         # enough time to keep the connection alive and continue using the same session.
-        # Windows or network could close idle connections also, which we would not detect
-        self._refresh_dc = reactor.callLater(30, SESSION_MANAGER.close_connection, client)
+        self._refresh_dc = reactor.callLater(60, SESSION_MANAGER.close_connection, client)
 
 
 class WinRMClient(object):
@@ -467,7 +466,7 @@ class LongCommandClient(WinRMClient):
 
         """
         LOG.debug("LongRunningCommand run_command: {0}".format(command_line))
-        self.key = (self._conn_info.ipaddress, command_line)
+        self.key = (self._conn_info.ipaddress, command_line + str(ps_script))
         self.ps_script = ps_script
         yield self.init_connection()
         self._shell_id = yield self._create_shell()
