@@ -31,7 +31,7 @@ KRB5_CONF_TEMPLATE = (
     "# NOTE: Any changes to this file will be overwritten.\n"
     "#\n"
     "\n"
-    "includedir {includedir}\n"
+    "{includedir}\n"
     "[logging]\n"
     " default = FILE:/var/log/krb5libs.log\n"
     " kdc = FILE:/var/log/krb5kdc.log\n"
@@ -50,6 +50,10 @@ KRB5_CONF_TEMPLATE = (
     "\n"
     "[domain_realm]\n"
     "{domain_realm_text}"
+)
+
+INCLUDEDIR_TEMPLATE = (
+    "includedir {includedir}\n"
 )
 
 KDC_TEMPLATE = (
@@ -75,15 +79,21 @@ class Config(object):
     def __init__(self):
         """Initialize instance with data from KRB5_CONFIG."""
         self.path = self.get_path()
+        self.includedirs = set()
         self.realms, self.admin_servers = self.load()
 
         # For further usage by kerberos python module.
         os.environ['KRB5_CONFIG'] = self.path
 
+    def add_includedir(self, includedir):
+        if includedir in self.includedirs:
+            return
+
+        self.includedirs.add(includedir)
+        self.save()
+
     def add_kdc(self, realm, kdc):
-        """
-        Add realm and KDC to KRB5_CONFIG.
-        """
+        """Add realm and KDC to KRB5_CONFIG."""
         if kdc in self.realms[realm]:
             return
 
@@ -135,6 +145,8 @@ class Config(object):
         """Load current realms from KRB5_CONFIG file."""
         realm_kdcs = collections.defaultdict(set)
         realm_adminservers = {}
+        if not self.includedirs:
+            self.includedirs = set()
 
         if not os.path.isfile(self.path):
             return realm_kdcs, realm_adminservers
@@ -148,6 +160,10 @@ class Config(object):
                     in_realms_section = True
                 elif line.strip().startswith('['):
                     in_realms_section = False
+                elif line.strip().startswith('includedir'):
+                    match = re.search(r'includedir (\S+)', line)
+                    if match:
+                        self.includedirs.add(match.group(1))
                 elif in_realms_section:
                     line = line.strip()
                     if not line:
@@ -173,6 +189,7 @@ class Config(object):
         """Save current realm KDCs to KRB5_CONFIG."""
         realms_list = []
         domain_realm_list = []
+        includedir_list = []
 
         for realm, kdcs in self.realms.iteritems():
             if not kdcs:
@@ -200,11 +217,17 @@ class Config(object):
         includedir = os.path.join(dirname, 'config')
         if not os.path.isdir(includedir):
             os.makedirs(includedir)
+        self.includedirs.add(includedir)
+
+        for includedir in tuple(self.includedirs):
+            includedir_list.append(
+                INCLUDEDIR_TEMPLATE.format(
+                    includedir=includedir))
 
         with open(self.path, 'w') as krb5_conf:
             krb5_conf.write(
                 KRB5_CONF_TEMPLATE.format(
-                    includedir=includedir,
+                    includedir=''.join(includedir_list),
                     realms_text=''.join(realms_list),
                     domain_realm_text=''.join(domain_realm_list)))
 
@@ -244,7 +267,7 @@ class KinitProcessProtocol(ProcessProtocol):
 
 
 @defer.inlineCallbacks
-def kinit(username, password, kdc):
+def kinit(username, password, kdc, includedir=None):
     """Perform kerberos initialization."""
     kinit = None
     for path in ('/usr/bin/kinit', '/usr/kerberos/bin/kinit'):
@@ -264,6 +287,8 @@ def kinit(username, password, kdc):
 
     global config
 
+    if includedir:
+        config.add_includedir(includedir)
     config.add_kdc(realm, kdc)
 
     ccname = config.get_ccname(username)

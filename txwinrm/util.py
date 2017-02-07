@@ -209,6 +209,7 @@ class AuthGSSClient(object):
         self._username = conn_info.username
         self._password = conn_info.password
         self._dcip = conn_info.dcip
+        self._include_dir = conn_info.include_dir
         gssflags = kerberos.GSS_C_CONF_FLAG | kerberos.GSS_C_MUTUAL_FLAG | kerberos.GSS_C_SEQUENCE_FLAG | kerberos.GSS_C_INTEG_FLAG
 
         os.environ['KRB5CCNAME'] = ccname(conn_info.username)
@@ -258,7 +259,10 @@ class AuthGSSClient(object):
                 elif msg == 'Server not found in Kerberos database':
                     raise Exception(msg + ': ' + self._service)
                 log.debug('{0}. Calling kinit.'.format(msg))
-                kinit_result = yield kinit(self._username, self._password, self._dcip)
+                kinit_result = yield kinit(self._username,
+                                           self._password,
+                                           self._dcip,
+                                           includedir=self._include_dir)
                 if kinit_result:
                     # this error is ok.  it just means more
                     # than one process is calling kinit
@@ -420,11 +424,12 @@ class ConnectionInfo(namedtuple(
         'service',
         'envelope_size',
         'code_page',
-        'locale'])):
+        'locale',
+        'include_dir'])):
     def __new__(cls, hostname, auth_type, username, password, scheme, port,
                 connectiontype, keytab, dcip, timeout=60, trusted_realm='',
                 trusted_kdc='', ipaddress='', service='', envelope_size=512000,
-                code_page=65001, locale='en-US'):
+                code_page=65001, locale='en-US', include_dir=None):
         if not ipaddress:
             ipaddress = hostname
         if not service:
@@ -435,7 +440,15 @@ class ConnectionInfo(namedtuple(
                                                   dcip, timeout,
                                                   trusted_realm, trusted_kdc,
                                                   ipaddress, service,
-                                                  envelope_size, code_page, locale)
+                                                  envelope_size, code_page, locale,
+                                                  include_dir)
+
+
+def verify_include_dir(conn_info):
+    has_include_dir, include_dir = _has_get_attr(conn_info, 'include_dir')
+    if has_include_dir and include_dir:
+        if not os.path.exists(include_dir):
+            raise Exception("includedir must be a valid location")
 
 
 def verify_code_page(conn_info):
@@ -530,6 +543,7 @@ def verify_conn_info(conn_info):
     verify_port(conn_info)
     verify_connectiontype(conn_info)
     verify_timeout(conn_info)
+    verify_include_dir(conn_info)
 
 
 class RequestSender(object):
