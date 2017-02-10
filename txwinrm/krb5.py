@@ -93,13 +93,19 @@ class Config(object):
         self.save()
 
     def add_kdc(self, realm, kdc):
-        """Add realm and KDC to KRB5_CONFIG."""
-        if kdc in self.realms[realm]:
+        """Add realm and KDC to KRB5_CONFIG.
+        Allow for comma separated string of kdcs.
+        Assume first entry to be the admin_server
+        """
+        kdcs = [k.strip() for k in kdc.split(',')]
+        new_kdcs = self.realms[realm].symmetric_difference(set(kdcs))
+        if not new_kdcs:
             return
 
-        self.realms[realm].add(kdc)
+        for server in new_kdcs:
+            self.realms[realm].add(server)
         if not self.admin_servers.get(realm):
-            self.admin_servers[realm] = kdc
+            self.admin_servers[realm] = kdcs[0]
         self.save()
 
     def get_path(self):
