@@ -97,6 +97,9 @@ class Config(object):
         Allow for comma separated string of kdcs.
         Assume first entry to be the admin_server
         """
+        if not kdc:
+            return
+
         kdcs = [k.strip() for k in kdc.split(',')]
         new_kdcs = self.realms[realm].symmetric_difference(set(kdcs))
         if not new_kdcs:
