@@ -73,18 +73,20 @@ Current Feature Support
 -----------------------
 
 -  HTTP
+-  HTTPS
 -  Basic authentication
 -  WQL queries
 -  WinRS
 -  typeperf
 -  Subscribe to the Windows Event Log
 -  Kerberos authentication (domain accounts)
+-  Single session clients
+-  WMI Associators queries
 
 
 Future Feature Support
 ----------------------
 
--  HTTPS
 -  NTLM authentication (local accounts)
 
 
@@ -92,13 +94,22 @@ Configuring the Target Windows Machines
 ---------------------------------------
 
 You can enable the WinRM service on Windows Server 2003, 2008 and 2012. Run
-Command Prompt as Administrator and execute the following commands
+Command Prompt as Administrator and execute the following commands for basic authentication.
 
 ::
 
     winrm quickconfig
     winrm s winrm/config/service '@{AllowUnencrypted="true";MaxConcurrentOperationsPerUser="4294967295"}'
     winrm s winrm/config/service/auth '@{Basic="true"}'
+    winrm s winrm/config/winrs '@{MaxShellsPerUser="2147483647"}'
+
+If using domain authentication, run the following commands.
+
+::
+
+    winrm quickconfig
+    winrm s winrm/config/service '@{MaxConcurrentOperationsPerUser="4294967295"}'
+    winrm s winrm/config/service/auth '@{Kerberos="true"}'
     winrm s winrm/config/winrs '@{MaxShellsPerUser="2147483647"}'
 
 
@@ -421,6 +432,9 @@ Run txwinrm/test/precommit before merging to master. This requires that you...
 
 Changes
 -------
+
+1.2.2
+* Add support for multiple kdcs to be defined
 
 1.1.27
 * Add support for running commands/enumerations in a single session
