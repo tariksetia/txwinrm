@@ -9,9 +9,11 @@ and monitoring the way Zenoss users are used to with some new possibilities.
 
 Right now we're trying to get as much real world experience using the library
 as possible to prove out the reliability and performance improvements we're
-hoping to achieve. If you have access to Windows servers, you can help! It
-doesn't even require a Zenoss Core installation as this tool stands alone right
-now.
+hoping to achieve. If you have access to Windows servers, you can help! This
+tool no longer stands alone.  You must install kerberos.so from the Windows
+ZenPack, https://github.com/zenoss/ZenPacks.zenoss.Microsoft.Windows/tree/develop/ZenPacks/zenoss/Microsoft/Windows/lib.
+The source for this version of pykerberos can be found here:
+https://github.com/zenoss/ZenPacks.zenoss.Microsoft.Windows/tree/develop/src/pykerberos
 
 See the zenoss-windows forum for updates to the project, and leave your
 feedback there. 
@@ -88,12 +90,13 @@ Future Feature Support
 ----------------------
 
 -  NTLM authentication (local accounts)
+-  Kerberos keytab support
 
 
 Configuring the Target Windows Machines
 ---------------------------------------
 
-You can enable the WinRM service on Windows Server 2003, 2008 and 2012. Run
+You can enable the WinRM service on Windows Server 2003, 2008, 2012, and 2016. Run
 Command Prompt as Administrator and execute the following commands for basic authentication.
 
 ::
@@ -120,7 +123,7 @@ You can pass a single host a query via the command line...
 
 ::
 
-    $ winrm -r host -u user -f "select * from Win32_NetworkAdapter"
+    $ winrm -r host -u user -p password -f "select * from Win32_NetworkAdapter"
 
 
 Another option is to create an ini-style config file and hit multiple targets
@@ -199,6 +202,35 @@ are 'basic' and 'kerberos'. 'basic' is the default.
 The '-d' option increases logging, printing out the XML for all requests and
 responses, along with the HTTP status code.
 
+The '-e' option specifies which service principal to use on the Windows host.  Valid
+values are 'http', 'https', and 'wsman'.
+
+::
+
+    usage: winrm.py [-h] [--debug] [--config CONFIG] [--remote REMOTE]
+                    [--authentication {basic,kerberos}] [--username USERNAME]
+                    [--dcip DCIP] [--keytab KEYTAB] [--password PASSWORD]
+                    [--ipaddress IPADDRESS] [--service SERVICE]
+                    [--includedir INCLUDEDIR] [--filter FILTER]
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      --debug, -d
+      --config CONFIG, -c CONFIG
+      --remote REMOTE, -r REMOTE
+                            hostname
+      --authentication {basic,kerberos}, -a {basic,kerberos}
+      --username USERNAME, -u USERNAME
+      --dcip DCIP, -i DCIP  address of kdc
+      --keytab KEYTAB, -k KEYTAB
+      --password PASSWORD, -p PASSWORD
+      --ipaddress IPADDRESS, -s IPADDRESS
+      --service SERVICE, -e SERVICE
+                            http/https/wsman
+      --includedir INCLUDEDIR
+                            valid includedir
+      --filter FILTER, -f FILTER
+
 
 WinRS
 -----
@@ -219,7 +251,7 @@ An example of interactive mode
 
 ::
 
-    $ winrs interactive -u Administrator -x 'typeperf "\Memory\Pages/sec" "\PhysicalDisk(_Total)\Avg. Disk Queue Length" "\Processor(_Total)\% Processor Time" -si 1' -r oakland
+    $ winrs interactive -u Administrator -r oakland
     Microsoft Windows [Version 6.2.9200]
     (c) 2012 Microsoft Corporation. All rights reserved.
     C:\Users\Default>dir
@@ -297,6 +329,38 @@ An example of batch
 
     Exit code of shell on oakland: 0
 
+
+Usage
+
+::
+
+    usage: winrs.py [-h] [--debug] [--config CONFIG] [--remote REMOTE]
+                    [--authentication {basic,kerberos}] [--username USERNAME]
+                    [--dcip DCIP] [--keytab KEYTAB] [--password PASSWORD]
+                    [--ipaddress IPADDRESS] [--service SERVICE]
+                    [--includedir INCLUDEDIR] [--command COMMAND]
+                    [{interactive,single,batch,long,multiple}]
+
+    positional arguments:
+      {interactive,single,batch,long,multiple}
+
+    optional arguments:
+      -h, --help            show this help message and exit
+      --debug, -d
+      --config CONFIG, -c CONFIG
+      --remote REMOTE, -r REMOTE
+                            hostname
+      --authentication {basic,kerberos}, -a {basic,kerberos}
+      --username USERNAME, -u USERNAME
+      --dcip DCIP, -i DCIP  address of kdc
+      --keytab KEYTAB, -k KEYTAB
+      --password PASSWORD, -p PASSWORD
+      --ipaddress IPADDRESS, -s IPADDRESS
+      --service SERVICE, -e SERVICE
+                            http/https/wsman
+      --includedir INCLUDEDIR
+                            valid includedir
+      --command COMMAND, -x COMMAND
 
 Typeperf
 --------
