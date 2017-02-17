@@ -594,6 +594,9 @@ class RequestSender(object):
     def send_request(self, request_template_name, **kwargs):
         log.debug('sending request: {0} {1}'.format(
             request_template_name, kwargs))
+        kwargs['envelope_size'] = getattr(self._conn_info, 'envelope_size', 512000)
+        kwargs['locale'] = getattr(self._conn_info, 'locale', 'en-US')
+        kwargs['code_page'] = getattr(self._conn_info, 'code_page', 65001)
         if not self._url or self._conn_info.auth_type == 'kerberos':
             yield self._set_url_and_headers()
         request = _get_request_template(request_template_name).format(**kwargs)
