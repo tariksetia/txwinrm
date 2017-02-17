@@ -73,6 +73,30 @@ DOMAIN_REALM_TEMPLATE = (
 )
 
 
+class KlistProcessProtocol(ProcessProtocol):
+    """Communicates with klist command.
+
+    This is only to verify the includedir.  If there's an error or specific text
+    we'll discard the includedir
+    """
+
+    def __init__(self):
+        self.d = defer.Deferred()
+        self._data = ''
+        self._error = ''
+
+    def errReceived(self, data):
+        self._error += data
+
+    def outReceived(self, data):
+        self._data += data
+        if 'Included profile file could not be read while initializing krb5' in self._data:
+            self._error = data
+
+    def processEnded(self, reason):
+        self.d.callback(self._error if self._error else None)
+
+
 class Config(object):
     """Manages KRB5_CONFIG."""
 
@@ -85,12 +109,33 @@ class Config(object):
         # For further usage by kerberos python module.
         os.environ['KRB5_CONFIG'] = self.path
 
+    @defer.inlineCallbacks
     def add_includedir(self, includedir):
         if includedir in self.includedirs:
             return
 
         self.includedirs.add(includedir)
         self.save()
+        # test for valid directory
+        klist = None
+        for path in ('/usr/bin/klist', '/usr/kerberos/bin/klist'):
+            if os.path.isfile(path):
+                klist = path
+                break
+        klist_args = [klist]
+        klist_env = {
+            'KRB5_CONFIG': config.path,
+        }
+
+        protocol = KlistProcessProtocol()
+
+        reactor.spawnProcess(protocol, klist, klist_args, klist_env)
+
+        results = yield protocol.d
+        if results:
+            self.includedirs.discard(includedir)
+            self.save()
+        defer.returnValue(None)
 
     def add_kdc(self, realm, kdc):
         """Add realm and KDC to KRB5_CONFIG.
@@ -297,7 +342,7 @@ def kinit(username, password, kdc, includedir=None):
     global config
 
     if includedir:
-        config.add_includedir(includedir)
+        yield config.add_includedir(includedir)
     config.add_kdc(realm, kdc)
 
     ccname = config.get_ccname(username)
