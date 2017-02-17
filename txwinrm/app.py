@@ -211,15 +211,16 @@ def _parse_args(utility):
     parser = ArgumentParser()
     parser.add_argument("--debug", "-d", action="store_true")
     parser.add_argument("--config", "-c")
-    parser.add_argument("--remote", "-r")
+    parser.add_argument("--remote", "-r", help="hostname")
     parser.add_argument("--authentication", "-a", default='basic',
                         choices=['basic', 'kerberos'])
     parser.add_argument("--username", "-u")
-    parser.add_argument("--dcip", "-i")
+    parser.add_argument("--dcip", "-i", help="address of kdc")
     parser.add_argument("--keytab", "-k")
     parser.add_argument("--password", "-p")
     parser.add_argument("--ipaddress", "-s")
     parser.add_argument("--service", "-e", help='http/https/wsman', default='http')
+    parser.add_argument("--includedir", help="valid includedir")
     utility.add_args(parser)
     args = parser.parse_args()
     if not args.config:
@@ -239,7 +240,8 @@ def _parse_args(utility):
                 hostname, args.authentication,
                 args.username, password, scheme,
                 port, connectiontype, args.keytab,
-                args.dcip, ipaddress=args.ipaddress, service=args.service)
+                args.dcip, ipaddress=args.ipaddress, service=args.service,
+                include_dir=args.includedir)
             try:
                 verify_conn_info(args.conn_info)
             except Exception as e:
