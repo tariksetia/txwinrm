@@ -90,7 +90,7 @@ def _find_stream(elem, command_id, stream_name):
         % (c.XML_NS_MSRSP, stream_name, command_id)
     for elem in elem.findall(xpath):
         if elem.text is not None:
-            yield base64.decodestring(elem.text)
+            yield base64.decodestring(elem.text).decode('utf-8-sig')
 
 
 def _find_exit_code(elem, command_id):
