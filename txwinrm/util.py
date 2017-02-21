@@ -132,6 +132,8 @@ def _parse_error_message(xml_str):
         detail = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Detail/*/*').strip()
     except ParseError:
         return "Malformed XML: {}".format(xml_str)
+    except Exception as e:
+        return "Unexpected Response ({})".format(xml_str)
     return "{0} {1}".format(text, detail)
 
 
