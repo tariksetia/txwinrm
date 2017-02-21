@@ -132,6 +132,8 @@ def _parse_error_message(xml_str):
         detail = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Detail/*/*').strip()
     except ParseError:
         return "Malformed XML: {}".format(xml_str)
+    except Exception as e:
+        return "Unexpected Response ({})".format(xml_str)
     return "{0} {1}".format(text, detail)
 
 
@@ -639,8 +641,8 @@ class RequestSender(object):
                         if auth_details:
                             yield self.gssclient._step(auth_details)
                     except kerberos.GSSError as e:
-                        msg ="HTTP Unauthorized received.  "\
-                        "Kerberos error code {0}: {1}.".format(e.args[1][1],e.args[1][0])
+                        msg = "HTTP Unauthorized received.  "\
+                        "Kerberos error code {0}: {1}.".format(e.args[1][1], e.args[1][0])
                         raise Exception(msg)
                 raise UnauthorizedError(
                     "HTTP Unauthorized received: Check username and password")
