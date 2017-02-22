@@ -24,7 +24,7 @@ from twisted.web.http_headers import Headers
 from twisted.internet.threads import deferToThread
 from . import constants as c
 
-from .krb5 import kinit, ccname, add_trusted_realm
+from .krb5 import kinit, ccname, add_trusted_realm, config
 
 # ZEN-15434 lazy import to avoid segmentation fault during install
 kerberos = None
@@ -132,7 +132,7 @@ def _parse_error_message(xml_str):
         detail = elem.findtext('.//{' + c.XML_NS_SOAP_1_2 + '}Detail/*/*').strip()
     except ParseError:
         return "Malformed XML: {}".format(xml_str)
-    except Exception as e:
+    except Exception:
         return "Unexpected Response ({})".format(xml_str)
     return "{0} {1}".format(text, detail)
 
@@ -210,6 +210,7 @@ class AuthGSSClient(object):
         self._conn_info = conn_info
         self._username = conn_info.username
         self._password = conn_info.password
+        self._realm = conn_info.username.split('@')[1].upper()
         self._dcip = conn_info.dcip
         self._include_dir = conn_info.include_dir
         gssflags = kerberos.GSS_C_CONF_FLAG | kerberos.GSS_C_MUTUAL_FLAG | kerberos.GSS_C_SEQUENCE_FLAG | kerberos.GSS_C_INTEG_FLAG
@@ -269,7 +270,11 @@ class AuthGSSClient(object):
                     # this error is ok.  it just means more
                     # than one process is calling kinit
                     if _KRB_INTERNAL_CACHE_ERR not in kinit_result:
-                        raise Exception(kinit_result)
+                        kinit_result = kinit_result.strip()
+                        extra = ''
+                        if 'Realm not local to KDC while getting initial credentials' in kinit_result:
+                            extra = ' Make sure all KDCs are valid: {}'.format(','.join(config.realms[self._realm]))
+                        raise Exception(kinit_result + extra)
 
         if result_code != kerberos.AUTH_GSS_CONTINUE:
             raise Exception('kerberos authGSSClientStep failed ({0}).'
