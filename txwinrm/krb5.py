@@ -142,7 +142,7 @@ class Config(object):
         Allow for comma separated string of kdcs.
         Assume first entry to be the admin_server
         """
-        if not kdc:
+        if not kdc or not kdc.strip():
             return
 
         kdcs = [k.strip() for k in kdc.split(',')]
