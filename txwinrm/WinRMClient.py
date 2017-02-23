@@ -401,6 +401,7 @@ class SingleCommandClient(WinRMClient):
                                                        command_line)
         except Exception:
             yield self.close_connection()
+            raise
         returnValue(cmd_response)
 
     @inlineCallbacks
