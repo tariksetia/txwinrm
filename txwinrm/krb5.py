@@ -81,15 +81,10 @@ class KlistProcessProtocol(ProcessProtocol):
 
     def __init__(self):
         self.d = defer.Deferred()
-        self._data = ''
         self._error = ''
 
     def errReceived(self, data):
-        self._error += data
-
-    def outReceived(self, data):
-        self._data += data
-        if 'Included profile file could not be read while initializing krb5' in self._data:
+        if 'Included profile file could not be read while initializing krb5' in data:
             self._error = data
 
     def processEnded(self, reason):
@@ -123,7 +118,7 @@ class Config(object):
                 break
         klist_args = [klist]
         klist_env = {
-            'KRB5_CONFIG': config.path,
+            'KRB5_CONFIG': self.path,
         }
 
         protocol = KlistProcessProtocol()
