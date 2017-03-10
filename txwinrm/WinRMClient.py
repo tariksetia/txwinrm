@@ -576,8 +576,6 @@ class EnumerateClient(WinRMClient):
             except RequestError:
                 # Store empty results for other query-specific errors.
                 continue
-            except Exception:
-                raise
 
         yield self.close_connection()
         returnValue(items)
