@@ -576,6 +576,8 @@ class EnumerateClient(WinRMClient):
             except RequestError:
                 # Store empty results for other query-specific errors.
                 continue
+            except Exception:
+                raise
 
         yield self.close_connection()
         returnValue(items)
@@ -634,7 +636,11 @@ class AssociatorClient(EnumerateClient):
             wql += ' where {}'.format(where)
         enum_info = EnumInfo(wql, resource_uri)
         results = yield self.do_collect([enum_info])
-        input_results = results[enum_info]
+
+        try:
+            input_results = results[enum_info]
+        except KeyError:
+            raise Exception('No results for seed class {}.'.format(seed_class))
 
         items[seed_class] = input_results
         while associations:
