@@ -311,7 +311,7 @@ class WinRMClient(object):
 
     @inlineCallbacks
     def init_connection(self):
-        '''Initialize a connection through the session_manager'''
+        """Initialize a connection through the session_manager"""
         yield self.session_manager.init_connection(self, WinRMSession)
         self._session = self.session_manager.get_connection(self.key)
         returnValue(None)
@@ -323,31 +323,39 @@ class WinRMClient(object):
         return self._session.decrypt_body(body)
 
     @inlineCallbacks
+    def send_request(self, request, **kwargs):
+        if not self._session:
+            yield self.init_connection()
+
+        if not self._session:
+            raise Exception('Could not connect to device {}'.format(self.conn_info.hostname))
+        response = yield self._session.send_request(request, self, **kwargs)
+        returnValue(response)
+
+    @inlineCallbacks
     def _create_shell(self):
-        elem = yield self._session.send_request('create', self)
+        elem = yield self.send_request('create')
         returnValue(_find_shell_id(elem))
 
     @inlineCallbacks
     def _delete_shell(self, shell_id):
-        yield self._session.send_request('delete', self, shell_id=shell_id)
+        yield self.send_request('delete', shell_id=shell_id)
         returnValue(None)
 
     @inlineCallbacks
     def _signal_terminate(self, shell_id, command_id):
-        yield self._session.send_request('signal',
-                                         self,
-                                         shell_id=shell_id,
-                                         command_id=command_id,
-                                         signal_code=c.SHELL_SIGNAL_TERMINATE)
+        yield self.send_request('signal',
+                                shell_id=shell_id,
+                                command_id=command_id,
+                                signal_code=c.SHELL_SIGNAL_TERMINATE)
         returnValue(None)
 
     @inlineCallbacks
     def _signal_ctrl_c(self, shell_id, command_id):
-        yield self._session.send_request('signal',
-                                         self,
-                                         shell_id=shell_id,
-                                         command_id=command_id,
-                                         signal_code=c.SHELL_SIGNAL_CTRL_C)
+        yield self.send_request('signal',
+                                shell_id=shell_id,
+                                command_id=command_id,
+                                signal_code=c.SHELL_SIGNAL_CTRL_C)
         returnValue(None)
 
     @inlineCallbacks
@@ -360,15 +368,15 @@ class WinRMClient(object):
         LOG.debug('WinRMClient._send_command: sending command request '
                   '(shell_id={0}, command_line_elem={1})'.format(
                       shell_id, command_line_elem))
-        command_elem = yield self._session.send_request(
-            'command', self, shell_id=shell_id, command_line_elem=command_line_elem,
+        command_elem = yield self.send_request(
+            'command', shell_id=shell_id, command_line_elem=command_line_elem,
             timeout=self._conn_info.timeout)
         returnValue(command_elem)
 
     @inlineCallbacks
     def _send_receive(self, shell_id, command_id):
-        receive_elem = yield self._session.send_request(
-            'receive', self, shell_id=shell_id, command_id=command_id)
+        receive_elem = yield self.send_request(
+            'receive', shell_id=shell_id, command_id=command_id)
         returnValue(receive_elem)
 
     @inlineCallbacks
