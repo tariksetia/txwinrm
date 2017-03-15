@@ -291,9 +291,9 @@ class WinRMSession(Session):
         except Exception:
             pass
 
-        # Close the connection after 60 seconds.  This will give other clients
+        # Close the connection after 30 seconds.  This will give other clients
         # enough time to keep the connection alive and continue using the same session.
-        self._refresh_dc = reactor.callLater(60, SESSION_MANAGER.close_connection, client)
+        self._refresh_dc = reactor.callLater(30, SESSION_MANAGER.close_connection, client)
 
 
 class WinRMClient(object):
