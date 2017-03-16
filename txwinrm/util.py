@@ -269,7 +269,8 @@ class AuthGSSClient(object):
                 kinit_result = yield kinit(self._username,
                                            self._password,
                                            self._dcip,
-                                           includedir=self._include_dir)
+                                           includedir=self._include_dir,
+                                           rdns=self._conn_info.rdns)
                 if kinit_result:
                     # this error is ok.  it just means more
                     # than one process is calling kinit
@@ -436,11 +437,12 @@ class ConnectionInfo(namedtuple(
         'envelope_size',
         'code_page',
         'locale',
-        'include_dir'])):
+        'include_dir',
+        'rdns'])):
     def __new__(cls, hostname, auth_type, username, password, scheme, port,
                 connectiontype, keytab, dcip, timeout=60, trusted_realm='',
                 trusted_kdc='', ipaddress='', service='', envelope_size=512000,
-                code_page=65001, locale='en-US', include_dir=None):
+                code_page=65001, locale='en-US', include_dir=None, rdns=True):
         if not ipaddress:
             ipaddress = hostname
         if not service:
@@ -452,7 +454,7 @@ class ConnectionInfo(namedtuple(
                                                   trusted_realm, trusted_kdc,
                                                   ipaddress, service,
                                                   envelope_size, code_page, locale,
-                                                  include_dir)
+                                                  include_dir, rdns)
 
 
 def verify_include_dir(conn_info):

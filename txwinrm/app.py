@@ -221,6 +221,7 @@ def _parse_args(utility):
     parser.add_argument("--ipaddress", "-s")
     parser.add_argument("--service", "-e", help='http/https/wsman', default='http')
     parser.add_argument("--includedir", help="valid includedir")
+    parser.add_argument("--disable_rdns", "-n", action="store_true", help="disable kerberos reverse lookups")
     utility.add_args(parser)
     args = parser.parse_args()
     if not args.config:
@@ -236,12 +237,13 @@ def _parse_args(utility):
             if not password:
                 password = getpass()
             connectiontype = 'Keep-Alive'
+            rdns = False if args.disable_rdns else True
             args.conn_info = ConnectionInfo(
                 hostname, args.authentication,
                 args.username, password, scheme,
                 port, connectiontype, args.keytab,
                 args.dcip, ipaddress=args.ipaddress, service=args.service,
-                include_dir=args.includedir)
+                include_dir=args.includedir, rdns=rdns)
             try:
                 verify_conn_info(args.conn_info)
             except Exception as e:

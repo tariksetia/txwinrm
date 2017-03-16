@@ -43,6 +43,7 @@ KRB5_CONF_TEMPLATE = (
     " ticket_lifetime = 24h\n"
     " renew_lifetime = 7d\n"
     " forwardable = true\n"
+    " rdns = {rdns}\n"
     "\n"
     "[realms]\n"
     "{realms_text}"
@@ -99,6 +100,7 @@ class Config(object):
         self.path = self.get_path()
         self.includedirs = set()
         self.realms, self.admin_servers = self.load()
+        self.rdns = True
 
         # For further usage by kerberos python module.
         os.environ['KRB5_CONFIG'] = self.path
@@ -131,7 +133,7 @@ class Config(object):
             self.save()
         defer.returnValue(None)
 
-    def add_kdc(self, realm, kdcs):
+    def add_kdc(self, realm, kdcs, rdns=True):
         """Add realm and KDC to KRB5_CONFIG.
         Allow for comma separated string of kdcs with regex
         Use + or nothing to add, - to remove, * for admin_server
@@ -167,10 +169,13 @@ class Config(object):
 
         new_kdcs = self.realms[realm].symmetric_difference(set(valid_kdcs))
         bad_kdcs = self.realms[realm].intersection(set(remove_kdcs))
-        if not new_kdcs and not bad_kdcs and admin_server == self.admin_servers[realm]:
+        if (not new_kdcs and not bad_kdcs and
+                admin_server == self.admin_servers[realm] and
+                self.rdns == rdns):
             # nothing to do
             return
 
+        self.rdns = rdns
         self.realms[realm] = self.realms[realm].union(new_kdcs) - bad_kdcs
         self.admin_servers[realm] = admin_server
         self.save()
@@ -237,6 +242,11 @@ class Config(object):
                     match = re.search(r'includedir (\S+)', line)
                     if match:
                         self.includedirs.add(match.group(1))
+                elif line.strip().startswith('rdns'):
+                    try:
+                        self.rdns = True if line.split('=')[1].strip().lower() == 'true' else False
+                    except Exception:
+                        self.rdns = True
                 elif in_realms_section:
                     line = line.strip()
                     if not line:
@@ -297,9 +307,11 @@ class Config(object):
                 INCLUDEDIR_TEMPLATE.format(
                     includedir=includedir))
 
+        rdns = 'true' if self.rdns else 'false'
         with open(self.path, 'w') as krb5_conf:
             krb5_conf.write(
                 KRB5_CONF_TEMPLATE.format(
+                    rdns=rdns,
                     includedir=''.join(includedir_list),
                     realms_text=''.join(realms_list),
                     domain_realm_text=''.join(domain_realm_list)))
@@ -340,7 +352,7 @@ class KinitProcessProtocol(ProcessProtocol):
 
 
 @defer.inlineCallbacks
-def kinit(username, password, kdc, includedir=None):
+def kinit(username, password, kdc, includedir=None, rdns=True):
     """Perform kerberos initialization."""
     kinit = None
     for path in ('/usr/bin/kinit', '/usr/kerberos/bin/kinit'):
@@ -362,7 +374,7 @@ def kinit(username, password, kdc, includedir=None):
 
     if includedir:
         yield config.add_includedir(includedir)
-    config.add_kdc(realm, kdc)
+    config.add_kdc(realm, kdc, rdns)
 
     ccname = config.get_ccname(username)
     dirname = os.path.dirname(ccname)
@@ -388,8 +400,8 @@ def ccname(username):
     return config.get_ccname(username)
 
 
-def add_trusted_realm(realm, kdc):
+def add_trusted_realm(realm, kdc, rdns=True):
     """Add a trusted realm for cross realm authentication"""
     trusted_realm = realm.upper()
     global config
-    config.add_kdc(trusted_realm, kdc)
+    config.add_kdc(trusted_realm, kdc, rdns)
