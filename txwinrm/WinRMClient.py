@@ -250,7 +250,7 @@ class WinRMSession(Session):
                 import xml.dom.minidom
                 xml = xml.dom.minidom.parseString(xml_str)
                 LOG.debug(xml.toprettyxml())
-            except:
+            except Exception:
                 LOG.debug('Could not prettify response XML: "{0}"'.format(xml_str))
         returnValue(ET.fromstring(xml_str))
 
