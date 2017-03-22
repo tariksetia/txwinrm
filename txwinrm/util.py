@@ -153,7 +153,7 @@ class _ErrorReader(Protocol):
                 body = self.gssclient.decrypt_body(''.join(self._data))
             except Exception as e:
                 body = 'There was a problem decrypting an error message: {}.'\
-                       ' Check WinRM logs on {}'.format(e.message, self.gssclient.conn_info.hostname)
+                       ' Check WinRM logs on {}'.format(e.message, self.gssclient._conn_info.hostname)
         else:
             body = ''.join(self._data)
         message = _parse_error_message(body)
