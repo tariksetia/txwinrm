@@ -26,7 +26,7 @@ __all__ = [
 
 KRB5_CONF_TEMPLATE = (
     "# This file is managed by the txwinrm python module.\n"
-    "# NOTE: Any changes to the logging, libdefaults, domain_realm"
+    "# NOTE: Any changes to the logging, libdefaults, domain_realm\n"
     "# sections of this file will be overwritten.\n"
     "#\n"
     "\n"
