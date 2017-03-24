@@ -26,7 +26,7 @@ __all__ = [
 
 KRB5_CONF_TEMPLATE = (
     "# This file is managed by the txwinrm python module.\n"
-    "# NOTE: Any changes to the logging, libdefaults, domain_realm"
+    "# NOTE: Any changes to the logging, libdefaults, domain_realm\n"
     "# sections of this file will be overwritten.\n"
     "#\n"
     "\n"
@@ -43,7 +43,7 @@ KRB5_CONF_TEMPLATE = (
     " ticket_lifetime = 24h\n"
     " renew_lifetime = 7d\n"
     " forwardable = true\n"
-    " rdns = {rdns}\n"
+    "{disable_rdns}"
     "\n"
     "[realms]\n"
     "{realms_text}"
@@ -99,8 +99,8 @@ class Config(object):
         """Initialize instance with data from KRB5_CONFIG."""
         self.path = self.get_path()
         self.includedirs = set()
+        self.disable_rdns = False
         self.realms, self.admin_servers = self.load()
-        self.rdns = True
 
         # For further usage by kerberos python module.
         os.environ['KRB5_CONFIG'] = self.path
@@ -133,7 +133,7 @@ class Config(object):
             self.save()
         defer.returnValue(None)
 
-    def add_kdc(self, realm, kdcs, rdns=True):
+    def add_kdc(self, realm, kdcs, disable_rdns=False):
         """Add realm and KDC to KRB5_CONFIG.
         Allow for comma separated string of kdcs with regex
         Use + or nothing to add, - to remove, * for admin_server
@@ -171,11 +171,11 @@ class Config(object):
         bad_kdcs = self.realms[realm].intersection(set(remove_kdcs))
         if (not new_kdcs and not bad_kdcs and
                 admin_server == self.admin_servers[realm] and
-                self.rdns == rdns):
+                self.disable_rdns == disable_rdns):
             # nothing to do
             return
 
-        self.rdns = rdns
+        self.disable_rdns = disable_rdns
         self.realms[realm] = self.realms[realm].union(new_kdcs) - bad_kdcs
         self.admin_servers[realm] = admin_server
         self.save()
@@ -244,9 +244,9 @@ class Config(object):
                         self.includedirs.add(match.group(1))
                 elif line.strip().startswith('rdns'):
                     try:
-                        self.rdns = True if line.split('=')[1].strip().lower() == 'true' else False
+                        self.disable_rdns = True if line.split('=')[1].strip() == 'false' else False
                     except Exception:
-                        self.rdns = True
+                        self.disable_rdns = False
                 elif in_realms_section:
                     line = line.strip()
                     if not line:
@@ -307,11 +307,11 @@ class Config(object):
                 INCLUDEDIR_TEMPLATE.format(
                     includedir=includedir))
 
-        rdns = 'true' if self.rdns else 'false'
+        disable_rdns = ' rdns = false\n' if self.disable_rdns else ''
         with open(self.path, 'w') as krb5_conf:
             krb5_conf.write(
                 KRB5_CONF_TEMPLATE.format(
-                    rdns=rdns,
+                    disable_rdns=disable_rdns,
                     includedir=''.join(includedir_list),
                     realms_text=''.join(realms_list),
                     domain_realm_text=''.join(domain_realm_list)))
@@ -352,7 +352,7 @@ class KinitProcessProtocol(ProcessProtocol):
 
 
 @defer.inlineCallbacks
-def kinit(username, password, kdc, includedir=None, rdns=True):
+def kinit(username, password, kdc, includedir=None, disable_rdns=False):
     """Perform kerberos initialization."""
     kinit = None
     for path in ('/usr/bin/kinit', '/usr/kerberos/bin/kinit'):
@@ -374,7 +374,7 @@ def kinit(username, password, kdc, includedir=None, rdns=True):
 
     if includedir:
         yield config.add_includedir(includedir)
-    config.add_kdc(realm, kdc, rdns)
+    config.add_kdc(realm, kdc, disable_rdns)
 
     ccname = config.get_ccname(username)
     dirname = os.path.dirname(ccname)
@@ -400,8 +400,8 @@ def ccname(username):
     return config.get_ccname(username)
 
 
-def add_trusted_realm(realm, kdc, rdns=True):
+def add_trusted_realm(realm, kdc, disable_rdns=False):
     """Add a trusted realm for cross realm authentication"""
     trusted_realm = realm.upper()
     global config
-    config.add_kdc(trusted_realm, kdc, rdns)
+    config.add_kdc(trusted_realm, kdc, disable_rdns)
