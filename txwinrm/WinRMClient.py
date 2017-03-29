@@ -7,6 +7,7 @@
 #
 ##############################################################################
 
+import copy
 import logging
 from collections import namedtuple
 from httplib import BAD_REQUEST, UNAUTHORIZED, FORBIDDEN, OK
@@ -291,9 +292,9 @@ class WinRMSession(Session):
         except Exception:
             pass
 
-        # Close the connection after 30 seconds.  This will give other clients
+        # Close the connection after 60 seconds.  This will give other clients
         # enough time to keep the connection alive and continue using the same session.
-        self._refresh_dc = reactor.callLater(30, SESSION_MANAGER.close_connection, client)
+        self._refresh_dc = reactor.callLater(60, SESSION_MANAGER.close_connection, client)
 
 
 class WinRMClient(object):
@@ -312,6 +313,11 @@ class WinRMClient(object):
     @inlineCallbacks
     def init_connection(self):
         """Initialize a connection through the session_manager"""
+        if self._session:
+            try:
+                self._refresh_dc.cancel()
+            except Exception:
+                pass
         yield self.session_manager.init_connection(self, WinRMSession)
         self._session = self.session_manager.get_connection(self.key)
         returnValue(None)
@@ -636,6 +642,7 @@ class AssociatorClient(EnumerateClient):
 
         see https://msdn.microsoft.com/en-us/library/aa384793(v=vs.85).aspx
         """
+        associations_copy = copy.deepcopy(associations)
         items = {}
         wql = 'Select {} from {}'.format(','.join(fields), seed_class)
         if where:
@@ -649,8 +656,8 @@ class AssociatorClient(EnumerateClient):
             raise Exception('No results for seed class {}.'.format(seed_class))
 
         items[seed_class] = input_results
-        while associations:
-            association = associations.pop(0)
+        while associations_copy:
+            association = associations_copy.pop(0)
             associate_results = []
             prop_results = {}
             for item in input_results:
