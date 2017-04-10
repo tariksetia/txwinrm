@@ -309,13 +309,15 @@ class Config(object):
 
         disable_rdns = ' rdns = false\n' if self.disable_rdns else ''
         with open(self.path, 'w') as krb5_conf:
-            krb5_conf.write(
-                KRB5_CONF_TEMPLATE.format(
-                    disable_rdns=disable_rdns,
-                    includedir=''.join(includedir_list),
-                    realms_text=''.join(realms_list),
-                    domain_realm_text=''.join(domain_realm_list)))
-
+            try:
+                krb5_conf.write(
+                    KRB5_CONF_TEMPLATE.format(
+                        disable_rdns=disable_rdns,
+                        includedir=''.join(includedir_list),
+                        realms_text=''.join(realms_list),
+                        domain_realm_text=''.join(domain_realm_list)))
+            except Exception:
+                pass
 
 # Singleton. Loads from KRB5_CONFIG on import.
 config = Config()
